@@ -161,7 +161,7 @@ MTP, 35–45 tok/s with MTP. Treat that as a hypothesis until measured.
 
 **CUDA / sm_120** — startup log must show `CUDA0 ... sm_120` and `nvidia-smi`
 must show >11 GiB used by the container. If the model runs on CPU, the image was
-built without sm_120 kernels: rebuild with `GGML_CUDA_ARCH=120` on CUDA ≥ 12.8.
+built without sm_120 kernels: rebuild with `GGML_CUDA_ARCH=120a` on CUDA ≥ 12.9.
 
 **`ggml_cuda_init: failed` / `no usable GPU found`** — the container did not get
 the GPU. On Docker 26.x use the compose `deploy.resources.reservations.devices`

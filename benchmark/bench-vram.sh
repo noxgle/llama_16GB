@@ -44,11 +44,11 @@ stop_vram_sampler() {
 
 # Build a synthetic prompt of ~target_tokens tokens (~4 chars/token for English).
 make_payload() {
-    local target_tokens="$1" ctx="$2"
+    local target_tokens="$1"
     python3 - "$target_tokens" "$PAYLOAD" <<'PY'
 import json, sys
 
-target, path = int(sys.argv[1]), int(sys.argv[2])
+target, path = int(sys.argv[1]), sys.argv[2]
 body = (
     "Distributed systems coordinate independent machines through message passing. "
     "Consensus protocols such as Paxos and Raft let replicas agree on an ordered log "

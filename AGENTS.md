@@ -165,13 +165,14 @@ nvidia-smi --query-gpu=memory.used --format=csv,noheader -lms 500
 
 ## Deployment gotchas (read before touching servers)
 
-### CUDA 12.8+ and `GGML_CUDA_ARCH=120` are mandatory
+### CUDA 12.8+ and `GGML_CUDA_ARCH=120a` are mandatory
 
-RTX 5060 Ti is Blackwell **sm_120**; llama.cpp needs CUDA ≥ 12.8 (`120a` from
-12.9). Images built on CUDA 12.4 (the 6GB default) either fail to run or fall
+RTX 5060 Ti is Blackwell **sm_120**; llama.cpp needs CUDA ≥ 12.8 and an
+`sm_120a` build (CUDA 12.9). Images built on CUDA 12.4 (the 6GB default) either fail to run or fall
 back to CPU — the legacy `.38` container restarting on `:b10665` is the proof.
-Every build must pass `-DCMAKE_CUDA_ARCHITECTURES=120` (CI build-arg
-`GGML_CUDA_ARCH`). Verify after deploy: startup log shows `CUDA0 ... sm_120`
+Every build must pass `-DCMAKE_CUDA_ARCHITECTURES=120a` (CI build-arg
+`GGML_CUDA_ARCH`; plain `120` also runs, but `120a` enables Blackwell
+architecture-specific instructions). Verify after deploy: startup log shows `CUDA0 ... sm_120`
 and `nvidia-smi` shows > 11 GiB for the llama process.
 
 ### Never use `--gpus all` on Docker 26.1.5

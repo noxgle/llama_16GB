@@ -38,7 +38,7 @@ REPO_URL="${LLAMA_REPO:-https://github.com/noxgle/llama_16GB.git}"
 INSTALL_DIR="${LLAMA_DIR:-/opt/llama16}"
 LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1}"
 LLAMA_REF="${LLAMA_REF:-b12716}"
-GGML_CUDA_ARCH="${GGML_CUDA_ARCH:-120}"
+GGML_CUDA_ARCH="${GGML_CUDA_ARCH:-120a}"
 
 case "$MODEL" in
     q38)       CONFIG_NAME="qwen3.8-27b-iq3s-mtp.env";        QUANT="iq3s";  MTP=1 ;;
@@ -145,6 +145,9 @@ heading "Step 4/10 — Repository"
 if [[ -d "$INSTALL_DIR/.git" ]]; then
     info "repo exists at $INSTALL_DIR, pulling..."
     git -C "$INSTALL_DIR" pull --ff-only --quiet || warn "git pull failed, continuing"
+elif [[ -f "$INSTALL_DIR/llama.sh" ]]; then
+    # Directory pushed with sync.sh instead of git clone: use it as-is.
+    info "using existing directory $INSTALL_DIR (not a git checkout)"
 else
     mkdir -p "$(dirname "$INSTALL_DIR")"
     git clone --quiet "$REPO_URL" "$INSTALL_DIR"

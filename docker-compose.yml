@@ -15,7 +15,7 @@ services:
         LLAMA_REPO: "${LLAMA_REPO:-https://github.com/ggml-org/llama.cpp.git}"
         LLAMA_REF: "${LLAMA_REF:-b12716}"
         LLAMA_NATIVE: "${LLAMA_NATIVE:-OFF}"
-        GGML_CUDA_ARCH: "${GGML_CUDA_ARCH:-120}"
+        GGML_CUDA_ARCH: "${GGML_CUDA_ARCH:-120a}"
         BUILD_JOBS: "${BUILD_JOBS:-4}"
     restart: unless-stopped
     ports:

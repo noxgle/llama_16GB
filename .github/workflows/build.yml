@@ -2,6 +2,7 @@
 #
 # Triggers:
 #   - push to master  -> ghcr.io/<owner>/llama-server-16gb:latest + :sha-<commit>
+#                        (always built from the pinned LLAMA_REF, not upstream master)
 #   - tag b*|stable*  -> ghcr.io/<owner>/llama-server-16gb:<tag>
 #   - manual dispatch -> custom llama.cpp ref / CUDA arch
 #
@@ -21,9 +22,9 @@ on:
         required: false
         default: 'b12716'
       cuda_arch:
-        description: 'CMAKE_CUDA_ARCHITECTURES (e.g. 120, 89;120)'
+        description: 'CMAKE_CUDA_ARCHITECTURES (e.g. 120a, 89;120a)'
         required: false
-        default: '120'
+        default: '120a'
       build_jobs:
         description: 'Parallel build jobs'
         required: false
@@ -81,11 +82,12 @@ jobs:
             else
               echo "llama_ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             fi
-            echo "cuda_arch=120" >> "$GITHUB_OUTPUT"
+            echo "cuda_arch=120a" >> "$GITHUB_OUTPUT"
             echo "build_jobs=4" >> "$GITHUB_OUTPUT"
           else
-            echo "llama_ref=master" >> "$GITHUB_OUTPUT"
-            echo "cuda_arch=120" >> "$GITHUB_OUTPUT"
+            # branch builds track the pinned ref, never upstream master
+            echo "llama_ref=b12716" >> "$GITHUB_OUTPUT"
+            echo "cuda_arch=120a" >> "$GITHUB_OUTPUT"
             echo "build_jobs=4" >> "$GITHUB_OUTPUT"
           fi
 
