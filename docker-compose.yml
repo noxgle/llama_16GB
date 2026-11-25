@@ -99,6 +99,7 @@ services:
       - "--cache-reuse"
       - "${CACHE_REUSE:-256}"
       # Single JSON object, values interpolated so .env stays bash-friendly.
+      - "--chat-template-kwargs"
       - '{"preserve_thinking": ${PRESERVE_THINKING:-false}, "reasoning_effort": "${REASONING_EFFORT:-medium}"}'
       - "--threads-http"
       - "${THREADS_HTTP:-2}"
