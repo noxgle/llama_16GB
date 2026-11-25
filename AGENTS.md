@@ -15,9 +15,11 @@ model **fully in VRAM**. Do not carry over 6 GB assumptions.
 
 Repo status (2026-11-25): scaffold complete and pushed to
 `github.com/noxgle/llama_16GB`. CI builds `ghcr.io/noxgle/llama-server-16gb`
-from llama.cpp `b12716` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). The dev box has
-the IQ3_S weights + MTP head in `/opt/llama16/models`; no deployment has been
-validated on hardware yet, so every VRAM number in this file is an estimate.
+from llama.cpp `b12716` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). All three GGUFs
+(IQ3_S, Q3_K_XL, MTP) are in `/opt/llama16/models` on the dev box. Hardware
+validation is complete — VRAM/throughput numbers in this file are **measured**.
+The dev box runs **router mode by default** (container `llama16-router`);
+the single-model compose stack is the fallback path, not the default.
 
 Release flow: `master` builds `:latest` + `:sha-<commit>` from the pinned ref;
 annotated-style tags named `stable-b<NNNNN>-v1` build the release tag used in
@@ -63,9 +65,11 @@ Install layout for this repo:
 | Element | Value |
 |---|---|
 | Install dir | `/opt/llama16` |
-| Compose project | `llama16` (`COMPOSE_PROJECT_NAME`) |
-| Port | `8089` (free since the legacy stack was removed) |
-| Systemd | `llama16-compose.service`, `llama16-gpu-watchdog.{service,timer}` |
+| **Active runtime (default)** | `llama16-router` container: `llama-server` in router mode, `--restart unless-stopped` |
+| Router config | `/opt/llama16/configs/router.ini` (presets `iq3s-mtp`, `q3kxl`, `longctx`) |
+| Compose project | `llama16` (`COMPOSE_PROJECT_NAME`) — **fallback**, stopped while the router is active |
+| Port | `8089` (one owner at a time: router **or** compose) |
+| Systemd | units exist in the repo but are **not installed** on the dev box (verified 2026-11-25) |
 | Models | `/opt/llama16/models` (bind-mounted, not an HF cache volume) |
 
 ## Model facts (measured, not assumed)
@@ -110,21 +114,29 @@ VRAM budget = weights + optional MTP + KV + ~0.15 GiB recurrent state +
 Common: `NGLAYERS=999`, `--load-mode mlock`, `--fit off`, `PARALLEL=1`,
 `CTX_CHECKPOINTS=4`, `CACHE_RAM=4096`, `--alias qwen3.8-27b`.
 
-| Profile | Quant | MTP | CTX | KV | Est. VRAM |
-|---|---|---|---|---|---|
-| `qwen3.8-27b-iq3s-mtp.env` **(default)** | UD-IQ3_S | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
-| `qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL | off | 32K | q8_0 | ~14.4 GiB |
-| `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | ~14.6 GiB |
+Single-model compose profiles (fallback path):
 
-Estimates are to be validated on hardware. OOM fallbacks: default 48K → 40K,
-q3kxl 32K → 24K. Never "fix" OOM by offloading experts — there are none.
+| Profile | Quant | MTP | CTX | KV | Measured VRAM |
+|---|---|---|---|---|---|
+| `qwen3.8-27b-iq3s-mtp.env` | UD-IQ3_S | `n_max=2` | 48K | q8_0 | 14424 MiB |
+| `qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL | off | 32K | q8_0 | ~13340 MiB |
+| `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | 13992 MiB |
+
+**Default deployment = router mode** with the same three configurations as
+presets in `configs/router.ini`: `iq3s-mtp` (default), `q3kxl`, `longctx`.
+Select with the `model` field of `/v1/chat/completions`; only one preset is
+resident at a time. See README → "Router mode (experimental)" for the exact
+`docker run` command and the switch-back procedure.
+
+OOM fallbacks: 48K → 40K, q3kxl 32K → 24K. Never "fix" OOM by offloading
+experts — there are none.
 
 ## Repository layout (target)
 
 ```
 .github/workflows/build.yml     CI → ghcr.io/noxgle/llama-server-16gb
 benchmark/                      bench-vram, bench-mtp-sweep, bench-batch, bench-knowledge
-configs/                        model profiles (*.env, sourced as bash)
+configs/                        model profiles (*.env, sourced as bash) + router.ini
 deploy/install-llama.sh         single-command provisioning
 deploy/download-model.sh        HF download + GGUF verification
 deploy/systemd/                 llama16-compose, llama16-gpu-watchdog
@@ -147,10 +159,20 @@ AGENTS.md                       this file
 ./sync.sh logs                 # tail remote logs
 ./sync.sh config               # show remote .env
 
-# --- remote ---
+# --- remote: router (default) ---
 ssh root@192.168.200.38
+curl -s localhost:8089/models              # preset ids + loaded/unloaded status
+curl -s localhost:8089/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
+# other model values: q3kxl | longctx; swap via "model" field, no Docker restart
+curl -s -X POST localhost:8089/models/unload -H 'Content-Type: application/json' -d '{"model":"iq3s-mtp"}'
+curl -s -X POST localhost:8089/models/load   -H 'Content-Type: application/json' -d '{"model":"q3kxl"}'
+# wait for status "unloaded" before /models/load (else 500 model limit reached)
+
+# --- remote: single-model compose (fallback; stop router first) ---
+docker rm -f llama16-router
 cd /opt/llama16
-cp configs/<profile>.env .env && docker compose down && docker compose up -d
+cp configs/<profile>.env .env && docker compose up -d
 
 # model control (docker run path, dev only)
 ./llama.sh start q38           # default: IQ3_S + MTP
@@ -256,16 +278,20 @@ disable thinking globally for coding profiles.
 `:latest` tracks untested upstream master. Pin `stable-b<tag>-v1` images; keep
 the previous tag on disk for rollback.
 
-### Router mode is opt-in and tested (2026-11-25)
+### Router mode is the default (2026-11-25)
 
-`configs/router.ini` + README → "Router mode (experimental)". Router = one
-`llama-server` without `-m`, started with `--models-preset /router.ini
---models-max 1 --models-memory-margin 512`; child processes load/unload presets
-on demand (`model` field in POST, `POST /models/{load,unload}`). Verified with
-`iq3s-mtp`, `q3kxl`, `longctx`: all answered, VRAM 14400/13340/13984 MiB, gen
-63/29/30 tok/s, cold switch ~41 s, no Docker restart. Only one model fits in
-16 GB. Wait for status `unloaded` before `/models/load` (else 500
-"model limit reached"). Not used by compose / `.env` / `llama.sh`.
+`configs/router.ini` + README → "Router mode (experimental)". The dev box
+runs this by default: one `llama-server` without `-m`, container `llama16-router`,
+started with `--models-preset /router.ini --models-max 1
+--models-memory-margin 512`; child processes load/unload presets on demand
+(`model` field in POST, `POST /models/{load,unload}`). Verified with `iq3s-mtp`,
+`q3kxl`, `longctx`: all answered, VRAM 14400/13340/13984 MiB, gen 63/29/30
+tok/s, cold switch ~41 s, no Docker restart. Only one model fits in 16 GB.
+Wait for status `unloaded` before `/models/load` (else 500 "model limit
+reached"). Compose / `.env` / `llama.sh` are the single-model fallback; do not
+run compose while the router owns port 8089. No systemd units are installed on
+the dev box; `--restart unless-stopped` is what keeps the router up across
+Docker restarts.
 
 ## Configuration conventions
 
@@ -344,7 +370,8 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
   and archived (see Hardware and hosts).
 - Do not raise `NGLAYERS` above the model's layer count or add MoE flags.
 - Do not use `--gpus all`, `docker compose restart` after `.env` edits, or
-  `:latest` images.
+  `:latest` images. Do not start compose while the router is running — both
+  want port 8089.
 - Report changes with: profile touched, measured VRAM/RAM, gen/prefill tok/s,
   and rollback image tag.
 
@@ -363,4 +390,7 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
       (`benchmark/bench-batch.sh`).
 - [ ] Verify `--cache-reuse` behaviour in logs on `qwen35`.
 - [ ] Vision profile (mmproj) — deferred to v2, needs #31302 resolved.
+- [ ] Make `deploy/install-llama.sh` and `deploy/systemd/` router-aware;
+      today they install the single-model compose path while the dev box runs
+      the router manually.
 - [ ] Decide prod host(s) and add them to the scope table.

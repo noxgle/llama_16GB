@@ -72,9 +72,15 @@ curl -s localhost:8089/health
 First token after a cold start takes 60–180 s (weights are read from disk into
 RAM/VRAM).
 
+> The dev box (`192.168.200.38`) currently runs **router mode by default** —
+> see [Router mode (experimental)](#router-mode-experimental). The commands
+> above describe the single-model fallback stack; stop `llama16-router` before
+> using compose.
+
 ## Profiles
 
 One profile = one complete `.env`. Copy it to `.env` and recreate the stack.
+For the default router deployment, use `configs/router.ini` instead.
 
 | File | Quant | MTP | Context | KV | Est. VRAM |
 |---|---|---|---|---|---|
