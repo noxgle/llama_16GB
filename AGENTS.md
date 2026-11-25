@@ -256,6 +256,17 @@ disable thinking globally for coding profiles.
 `:latest` tracks untested upstream master. Pin `stable-b<tag>-v1` images; keep
 the previous tag on disk for rollback.
 
+### Router mode is opt-in and tested (2026-11-25)
+
+`configs/router.ini` + README → "Router mode (experimental)". Router = one
+`llama-server` without `-m`, started with `--models-preset /router.ini
+--models-max 1 --models-memory-margin 512`; child processes load/unload presets
+on demand (`model` field in POST, `POST /models/{load,unload}`). Verified with
+`iq3s-mtp`, `q3kxl`, `longctx`: all answered, VRAM 14400/13340/13984 MiB, gen
+63/29/30 tok/s, cold switch ~41 s, no Docker restart. Only one model fits in
+16 GB. Wait for status `unloaded` before `/models/load` (else 500
+"model limit reached"). Not used by compose / `.env` / `llama.sh`.
+
 ## Configuration conventions
 
 - `configs/*.env` files are **sourced as bash** by `llama.sh`. Keep `KEY=value`,

@@ -19,6 +19,7 @@ but the operating model is different — see [Not a 6 GB fork](#not-a-6-gb-fork)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Profiles](#profiles)
+- [Router mode (experimental)](#router-mode-experimental)
 - [Memory budget](#memory-budget)
 - [Commands](#commands)
 - [Benchmarking](#benchmarking)
@@ -87,6 +88,67 @@ MTP for 128K of context.
 
 Fallbacks when a profile OOMs: 48K → 40K (default), 32K → 24K (q3kxl), or switch
 `CACHE_TYPE_K/V` to `q4_0`. Do **not** add MoE flags — the model has no experts.
+
+## Router mode (experimental)
+
+llama.cpp `b12716` can run as a **router**: one `llama-server` started *without*
+`-m`, using `--models-preset` to expose several named configurations. Each
+request is dispatched by its `model` field; the router starts and stops child
+`llama-server` processes on demand. **Docker is not restarted** — only the
+child processes come and go.
+
+`configs/router.ini` defines three presets matching the standalone profiles:
+`iq3s-mtp` (48K + MTP), `q3kxl` (32K), and `longctx` (128K, q4_0 KV).
+
+Start it (stop the compose stack first — both use port 8089):
+
+```bash
+cd /opt/llama16
+docker compose down
+docker run -d --name llama16-router --restart unless-stopped \
+    --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e GGML_CUDA_GRAPH_OPT=1 \
+    -p 8089:8089 \
+    -v /opt/llama16/models:/models:ro \
+    -v /opt/llama16/configs/router.ini:/router.ini:ro \
+    ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1 \
+    --models-preset /router.ini --models-max 1 --models-memory-margin 512 \
+    --host 0.0.0.0 --port 8089 --alias router --jinja --threads-http 2 --fit off
+```
+
+Use it:
+
+```bash
+curl -s localhost:8089/models | jq '.data[] | {id, status: .status.value}'
+
+curl -s localhost:8089/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
+
+curl -s -X POST localhost:8089/models/unload -H 'Content-Type: application/json' \
+  -d '{"model":"iq3s-mtp"}'
+# Wait until GET /models reports status "unloaded" before /models/load,
+# otherwise you get 500 "model limit reached".
+```
+
+Back to the normal single-model stack:
+
+```bash
+docker rm -f llama16-router
+cp configs/qwen3.8-27b-iq3s-mtp.env .env
+docker compose up -d
+```
+
+Measured on the 5060 Ti (2026-11-25), same Docker container throughout:
+
+| Preset | VRAM | gen tok/s | Switch time |
+|---|---|---|---|
+| `iq3s-mtp` | 14400 MiB | 63.2 (draft 19/20) | ~5 s |
+| `q3kxl` | 13340 MiB | 29.0 | ~41 s cold |
+| `longctx` | 13984 MiB | 30.4 | ~5 s |
+
+Caveats: only one model fits in 16 GB at a time (`--models-max 1`); a cold
+switch re-reads 12–13 GB of weights; the router itself never touches the GPU.
+This mode is opt-in and is **not** used by `docker-compose.yml`, `.env` or
+`llama.sh`.
 
 ## Memory budget
 
