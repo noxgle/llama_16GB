@@ -1,0 +1,115 @@
+# llama.cpp server — 16 GB VRAM (Qwen3.8-27B dense + optional MTP)
+#
+# Target GPU: RTX 5060 Ti 16 GB (sm_120) and other >=16 GB cards.
+# The model is DENSE: there is no MoE CPU offload. Everything must fit in VRAM.
+
+name: llama16
+
+services:
+  llama-server:
+    image: ${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        LLAMA_REPO: "${LLAMA_REPO:-https://github.com/ggml-org/llama.cpp.git}"
+        LLAMA_REF: "${LLAMA_REF:-b12716}"
+        LLAMA_NATIVE: "${LLAMA_NATIVE:-OFF}"
+        GGML_CUDA_ARCH: "${GGML_CUDA_ARCH:-120}"
+        BUILD_JOBS: "${BUILD_JOBS:-4}"
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8089}:${PORT:-8089}"
+    volumes:
+      # GGUF files are downloaded to ./models by deploy/download-model.sh
+      - ./models:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - GGML_CUDA_GRAPH_OPT=${GGML_CUDA_GRAPH_OPT:-1}
+      # Draft model must go through env: newer builds reject empty CLI values.
+      - LLAMA_ARG_SPEC_DRAFT_MODEL=${DRAFT_MODEL:-}
+      - LLAMA_ARG_THINK_BUDGET=${REASONING_BUDGET:--1}
+      - LLAMA_ARG_THINK_BUDGET_MESSAGE=${REASONING_BUDGET_MESSAGE:-}
+    deploy:
+      # NEVER replace with `--gpus all`: on Docker 26.1.5 it degrades to
+      # CPU-serialized CUDA JIT after reboot.
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    entrypoint:
+      # Newer llama.cpp rejects empty argv elements, and compose expands unset
+      # optional vars to "". Filter them, then exec the server.
+      - /bin/bash
+      - -c
+      - 'args=(); for a in "$$@"; do [ -n "$$a" ] && args+=("$$a"); done; exec /usr/local/bin/llama-server "$${args[@]}"'
+      - llama-server
+    command:
+      # -m /models/<file>.gguf (local file). Do NOT use -hf here: the MTP head
+      # lives in a subdirectory and -hf fails with "no GGUF files found".
+      - "${MODEL_FLAG:--m}"
+      - "${MODEL:-/models/Qwen3.8-27B-UD-IQ3_S.gguf}"
+      - "--alias"
+      - "${ALIAS:-qwen3.8-27b}"
+      - "--jinja"
+      - "-c"
+      - "${CTX:-49152}"
+      - "-n"
+      - "${N_PREDICT:--1}"
+      - "--port"
+      - "${PORT:-8089}"
+      - "--host"
+      - "${HOST:-0.0.0.0}"
+      - "-ngl"
+      - "${NGLAYERS:-999}"
+      - "-fa"
+      - "${FLASHATTN:-on}"
+      - "-b"
+      - "${BATCH:-1024}"
+      - "-ub"
+      - "${UBATCH:-512}"
+      - "-t"
+      - "${THREADS:-4}"
+      - "--threads-batch"
+      - "${THREADS_BATCH:-4}"
+      - "--parallel"
+      - "${PARALLEL:-1}"
+      - "--poll"
+      - "${POLL:-50}"
+      - "--load-mode"
+      - "${LOAD_MODE:-mlock}"
+      - "--fit"
+      - "off"
+      - "-ctk"
+      - "${CACHE_TYPE_K:-q8_0}"
+      - "-ctv"
+      - "${CACHE_TYPE_V:-q8_0}"
+      - "--ctx-checkpoints"
+      - "${CTX_CHECKPOINTS:-4}"
+      # Multimodal projector: flag + path as separate elements (equals-form is
+      # rejected). Empty path is filtered, leaving a plain --no-mmproj.
+      - "${MMPROJ_FLAG:---no-mmproj}"
+      - "${MMPROJ:-}"
+      - "--reasoning"
+      - "${REASONING:-auto}"
+      - "--cache-ram"
+      - "${CACHE_RAM:-4096}"
+      - "--cache-reuse"
+      - "${CACHE_REUSE:-256}"
+      # Single JSON object, values interpolated so .env stays bash-friendly.
+      - '{"preserve_thinking": ${PRESERVE_THINKING:-false}, "reasoning_effort": "${REASONING_EFFORT:-medium}"}'
+      - "--threads-http"
+      - "${THREADS_HTTP:-2}"
+      # MTP speculative decoding: only `draft-mtp` is accepted together with -md.
+      - "--spec-type"
+      - "${SPEC_TYPE:-none}"
+      - "--spec-draft-n-max"
+      - "${SPEC_DRAFT_N_MAX:-2}"
+      - "--gpu-layers-draft"
+      - "${GPU_LAYERS_DRAFT:-0}"
+      - "--spec-draft-n-min"
+      - "${SPEC_DRAFT_N_MIN:-0}"
+      - "--spec-draft-p-min"
+      - "${SPEC_DRAFT_P_MIN:-0.0}"

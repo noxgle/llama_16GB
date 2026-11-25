@@ -1,0 +1,14 @@
+# Never send weights or runtime state into the build context.
+models/
+*.gguf
+.env
+.env.*
+!.env.example
+.git/
+benchmark/*.csv
+benchmark/*.json
+benchmark/*.md
+*.log
+.opencode/
+.venv/
+__pycache__/

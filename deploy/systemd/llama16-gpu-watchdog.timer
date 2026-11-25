@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the llama_16GB GPU watchdog every 2 minutes
+Documentation=https://github.com/noxgle/llama_16GB
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=2min
+Unit=llama16-gpu-watchdog.service
+
+[Install]
+WantedBy=timers.target
