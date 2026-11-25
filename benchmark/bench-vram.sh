@@ -28,18 +28,35 @@ trap 'rm -f "$PAYLOAD" "$PEAK_FILE"' EXIT
 
 csv_row "$CSV" ctx kv vram_peak_mib vram_after_mib prefill_tps gen_tps ttft_s ttft_ms prompt_tokens gen_tokens
 
-# Background VRAM sampler: keeps the highest value seen.
+# Background VRAM sampler: writes the highest value seen to $PEAK_FILE.
+# Killing the sampler PID makes nvidia-smi die on SIGPIPE.
 start_vram_sampler() {
     : > "$PEAK_FILE"
-    ( nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits -lms 250 \
-        | awk '{ if ($1+0 > m) m = $1+0; print m }' > "$PEAK_FILE" ) &
+    python3 - "$PEAK_FILE" <<'PY' &
+import sys, subprocess
+
+peak, f = 0, open(sys.argv[1], "w")
+proc = subprocess.Popen(
+    ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits", "-lms", "250"],
+    stdout=subprocess.PIPE, text=True)
+for line in proc.stdout:
+    try:
+        v = int(line.strip())
+    except ValueError:
+        continue
+    if v > peak:
+        peak = v
+        f.write(f"{peak}\n")
+        f.flush()
+PY
     SAMPLER_PID=$!
 }
 
 stop_vram_sampler() {
     kill "$SAMPLER_PID" 2>/dev/null || true
+    pkill -P "$SAMPLER_PID" 2>/dev/null || true
     wait "$SAMPLER_PID" 2>/dev/null || true
-    tail -1 "$PEAK_FILE" 2>/dev/null | tr -d ' '
+    tail -1 "$PEAK_FILE" 2>/dev/null | tr -d ' ' || true
 }
 
 # Build a synthetic prompt of ~target_tokens tokens (~4 chars/token for English).
