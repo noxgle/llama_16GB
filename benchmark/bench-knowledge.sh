@@ -29,7 +29,7 @@ ITEMS=(
   "prime|Is 91 prime? Answer yes or no, then one sentence why.|no|yes"
   "bash|Write a bash one-liner that prints the 3 largest files under /var/log by size.|du;sort;head|"
   "sql|Given tables users(id, name) and orders(id, user_id, total), write a query returning each user name and their total order sum, including users with no orders.|left join|"
-  "python|Write a Python function `chunk(lst, n)` that splits a list into consecutive chunks of size n (last chunk may be shorter). Return only code.|def chunk|"
+  "python|Write a Python function chunk(lst, n) that splits a list into consecutive chunks of size n (last chunk may be shorter). Return only code.|def chunk|"
   "gguf|In one paragraph, explain what a GGUF quantization type like Q4_K_M describes.|quant|"
   "ctx|A model has 64 layers, 4 KV heads, head_dim 256, and only 16 layers keep a KV cache. How many bytes per token does an fp16 KV cache use? Show the arithmetic.|byte|"
   "json|Return exactly this JSON and nothing else: {\"ok\": true, \"n\": 3}|\"ok\": true|"

@@ -13,10 +13,16 @@ Forked in structure from `noxgle/llama_6GB`, but the operating model is
 **different**: 6 GB boxes run MoE with experts on CPU; a 16 GB box runs a dense
 model **fully in VRAM**. Do not carry over 6 GB assumptions.
 
-Repo status (2026-11-25): scaffold phase. `AGENTS.md` and the plan exist;
-`Dockerfile`, `docker-compose.yml`, `configs/`, `deploy/`, `scripts/`,
-`benchmark/` are created in the initial scaffold commit. Verify a file exists
-before referencing it.
+Repo status (2026-11-25): scaffold complete and pushed to
+`github.com/noxgle/llama_16GB`. CI builds `ghcr.io/noxgle/llama-server-16gb`
+from llama.cpp `b12716` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). The dev box has
+the IQ3_S weights + MTP head in `/opt/llama16/models`; no deployment has been
+validated on hardware yet, so every VRAM number in this file is an estimate.
+
+Release flow: `master` builds `:latest` + `:sha-<commit>` from the pinned ref;
+annotated-style tags named `stable-b<NNNNN>-v1` build the release tag used in
+`configs/` and `install-llama.sh`. Bump the pin in the workflow, Dockerfile and
+profiles together.
 
 ## Hardware and hosts
 

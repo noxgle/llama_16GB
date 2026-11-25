@@ -45,8 +45,10 @@ start() {
     cfg=$(config_for "$model") || { err "unknown model: $model (q38|q38-q3kxl|q38-long)"; exit 1; }
     [[ -f "$ROOT/$cfg" ]] || { err "config not found: $cfg"; exit 1; }
 
+    set -a
     # shellcheck disable=SC1090
-    set -a; source "$ROOT/$cfg"; set +a
+    source "$ROOT/$cfg"
+    set +a
 
     stop_all
 

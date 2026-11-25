@@ -88,7 +88,8 @@ verify() {
 
 fetch() {
     local path="$1" size="$2"
-    local target="$DEST/$(basename "$path")"
+    local target
+    target="$DEST/$(basename "$path")"
 
     if [[ -f "$target" ]] && [[ "$(stat -c%s "$target")" -eq "$size" ]]; then
         info "already present: $(basename "$target")"

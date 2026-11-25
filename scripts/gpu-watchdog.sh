@@ -22,7 +22,8 @@ COOLDOWN_MINUTES=30
 HEALTH_URL="http://localhost:${PORT}/health"
 
 log() {
-    local msg="[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+    local msg
+    msg="[$(date +'%Y-%m-%d %H:%M:%S')] $1"
     echo "$msg" | tee -a "$LOG_FILE" | logger -t llama16-gpu-watchdog 2>/dev/null || true
 }
 
