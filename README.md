@@ -56,14 +56,17 @@ bash deploy/install-llama.sh                        # router mode (default)
 ```
 
 The script installs Docker + nvidia-container-toolkit if missing, verifies the
-GPU inside a container, pulls the pinned image, downloads the weights, writes
-`.env` from the selected profile, and waits for `/health`.
+GPU inside a container, pulls the pinned image, downloads the weights (all
+three GGUFs in router mode), writes `.env` for the fallback profile and waits
+for `/health`. With `--with-systemd` it also installs the router unit and the
+GPU watchdog timer.
 
 Manual equivalent:
 
 ```bash
 cd /opt/llama16
 bash deploy/download-model.sh --quant iq3s             # ~13.4 GB with MTP
+bash deploy/download-model.sh --quant q3kxl --no-mtp   # second preset
 cp configs/qwen3.8-27b-iq3s-mtp.env .env
 docker compose pull
 docker compose down && docker compose up -d            # down+up, never restart
@@ -85,7 +88,7 @@ For the default router deployment, use `configs/router.ini` instead.
 
 | File | Quant | MTP | Context | KV | Est. VRAM |
 |---|---|---|---|---|---|
-| `configs/qwen3.8-27b-iq3s-mtp.env` **(default)** | UD-IQ3_S (11.2 GiB) | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
+| `configs/qwen3.8-27b-iq3s-mtp.env` (fallback) | UD-IQ3_S (11.2 GiB) | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
 | `configs/qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL (12.2 GiB) | off | 32K | q8_0 | ~14.4 GiB |
 | `configs/qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S (11.2 GiB) | off | 128K | q4_0 | ~14.6 GiB |
 
@@ -109,8 +112,9 @@ request is dispatched by its `model` field; the router starts and stops child
 `llama-server` processes on demand. **Docker is not restarted** — only the
 child processes come and go.
 
-`configs/router.ini` defines three presets matching the standalone profiles:
-`iq3s-mtp` (48K + MTP), `q3kxl` (32K), and `longctx` (128K, q4_0 KV).
+`configs/router.ini` defines four presets: `iq3s-mtp` (48K + MTP, tuned),
+`q3kxl` (32K), `longctx` (128K, q4_0 KV), and `iq3s-mtp-base` (the pre-tuning
+A/B baseline — benchmark only).
 
 Start it (stop the compose stack first — both use port 8089):
 
@@ -157,10 +161,15 @@ Measured on the 5060 Ti (2026-11-25), same Docker container throughout:
 | `q3kxl` | 13340 MiB | 29.0 | ~41 s cold |
 | `longctx` | 13984 MiB | 30.4 | ~5 s |
 
+These gen numbers were measured **before** the `ngram-mod`/cache tuning; they
+are still a valid baseline. See [Benchmarking](#benchmarking) for current
+throughput (copy/edit workloads reach ~280–310 tok/s).
+
 Caveats: only one model fits in 16 GB at a time (`--models-max 1`); a cold
 switch re-reads 12–13 GB of weights; the router itself never touches the GPU.
-This mode is opt-in and is **not** used by `docker-compose.yml`, `.env` or
-`llama.sh`.
+This is the **default deployment mode** on the dev box and the default of
+`install-llama.sh`; `docker-compose.yml`, `.env` and `llama.sh` are the
+single-model fallback path.
 
 ## Memory budget
 
@@ -195,11 +204,12 @@ reachable at all on a 16 GB card.
 ./llama.sh start q38-long      # IQ3_S, 128K
 ./llama.sh status | stop | logs q38 | health
 
-# API
+# API — router mode: "model" selects the preset (iq3s-mtp | q3kxl | longctx)
 curl -s localhost:8089/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}],"max_tokens":64}' \
+  -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}' \
   | jq '{gen: .timings.predicted_per_second, prefill: .timings.prompt_per_second, draft: .timings.draft_n, accepted: .timings.draft_n_accepted}'
+# single-model fallback uses "model":"qwen3.8-27b" instead
 ```
 
 Systemd units (installed with `install-llama.sh --with-systemd`):
@@ -214,8 +224,9 @@ Systemd units (installed with `install-llama.sh --with-systemd`):
 
 ## Benchmarking
 
-Scripts run **on the server** (they recreate the compose stack). They refuse to
-run when the model is not on the GPU.
+Most scripts run **on the server** and recreate the compose stack; they refuse
+to run when the model is not on the GPU. `tune-ab.sh` is the exception: it needs
+router mode and the `iq3s-mtp` / `iq3s-mtp-base` presets.
 
 ```bash
 ./benchmark/bench-vram.sh                     # ctx sweep: VRAM peak, prefill, gen
@@ -237,6 +248,10 @@ sm_120a, llama.cpp `b12716`, image `ghcr.io/noxgle/llama-server-16gb:stable-b127
 | `qwen3.8-27b-iq3s-mtp.env`, ctx=32768 | 56.5 | 907.3 | 13728 MiB | `stable-b12716-v1` |
 | `qwen3.8-27b-iq3s-mtp.env`, ctx=49152 (default) | 51.1 | 878.2 | 14424 MiB | `stable-b12716-v1` |
 | `qwen3.8-27b-iq3s-mtp.env`, ctx=65536 (near-full prompt) | 48.3 | 845.2 | 15110 MiB | `stable-b12716-v1` |
+
+The sweep above was run with the pre-tuning settings (MTP only, 4096/4 cache).
+Current default `iq3s-mtp` (ngram-mod) measured 60.7 gen tok/s on a short
+prompt and 282.6–308.5 tok/s on copy/edit workloads (see below).
 
 Raw CSVs: `benchmark/vram-20261125-113852.csv` (script output printed to the
 console log as well). Measured near-full-context 64K prefill via `probe-ctx.sh 65536 0.90`:
@@ -266,8 +281,10 @@ A 39K-token chat followed by a foreign request returned with 39065 cached
 tokens in ~2 s on **both** cache settings; the 8192/8 benefit is expected on
 65K+ chats (as measured in the field guide linked in `AGENTS.md`).
 
-Expected order of magnitude for 448 GB/s memory bandwidth: 25–30 tok/s without
-MTP, 35–45 tok/s with MTP. Treat that as a hypothesis until measured.
+Measured ranges (hardware above): ~19 tok/s without MTP at 128K, 51–63 tok/s
+with MTP on short prompts, and up to ~310 tok/s on copy/edit workloads when
+`ngram-mod` finds a long match in the context. Generation on pure reasoning is
+unchanged by `ngram-mod`.
 
 ## Troubleshooting
 
@@ -288,8 +305,10 @@ head lives in `MTP/` and the HF planner does not recurse; use
 `deploy/download-model.sh` and `-m` / `-md` with local paths.
 
 **Empty responses** — Qwen3.8 defaults to `reasoning_effort=xhigh`; with a low
-`max_tokens` the budget is consumed by thinking. Raise `N_PREDICT`/`max_tokens`
-or set `REASONING_EFFORT=medium` in `.env`.
+`max_tokens` the budget is consumed by thinking. Raise `N_PREDICT`/`max_tokens`,
+set `REASONING_EFFORT=medium` in `.env` (single model) or `reasoning_effort` in
+`configs/router.ini` (router). Valid values are `xhigh`, `medium`, `low` —
+`high` returns HTTP 500.
 
 **`.env` changes have no effect** — `docker compose restart` does not re-read
 `.env`. Use `down && up -d`.
