@@ -306,6 +306,14 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 - 128K longctx profile (IQ3_S, SPEC_TYPE=none, q4_0 KV, CTX=131072) probe
   (`probe-ctx.sh 131072 0.40`): prefill 881.1 tok/s, gen 19.4 tok/s,
   VRAM after 13992 MiB — fits on the 16 GB card.
+- KV quality check (2026-11-25, IQ3_S, no MTP, temp 0): q4_0 vs q8_0 at the
+  same context gave 7/8 PASS on `bench-knowledge.sh` for both (the single FAIL
+  is a fixture issue: expected `du`, model used `find`), 5/8 answers
+  byte-identical. 3-needle recall at 96K / 71540 tokens: all 3 needles found
+  by both, identical output. No observable quality difference; prefer q4_0 for
+  long context, q8_0 only if you have VRAM headroom and want max fidelity.
+- 128K + q8_0 (no MTP) does NOT even load: compute pp buffers (~740 MiB) cannot
+  be allocated. Max measured q8_0 context without MTP: 96K (98304).
 
 ## Upstream issues to watch
 
