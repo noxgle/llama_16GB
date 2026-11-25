@@ -69,7 +69,7 @@ Install layout for this repo:
 | Router config | `/opt/llama16/configs/router.ini` (presets `iq3s-mtp`, `q3kxl`, `longctx`) |
 | Compose project | `llama16` (`COMPOSE_PROJECT_NAME`) — **fallback**, stopped while the router is active |
 | Port | `8089` (one owner at a time: router **or** compose) |
-| Systemd | units exist in the repo but are **not installed** on the dev box (verified 2026-11-25) |
+| Systemd | `llama16-router.service` (default) or `llama16-compose.service` (fallback) + GPU watchdog; install with `--with-systemd` |
 | Models | `/opt/llama16/models` (bind-mounted, not an HF cache volume) |
 
 ## Model facts (measured, not assumed)
@@ -137,7 +137,8 @@ experts — there are none.
 .github/workflows/build.yml     CI → ghcr.io/noxgle/llama-server-16gb
 benchmark/                      bench-vram, bench-mtp-sweep, bench-batch, bench-knowledge
 configs/                        model profiles (*.env, sourced as bash) + router.ini
-deploy/install-llama.sh         single-command provisioning
+deploy/install-llama.sh         single-command provisioning (router by default)
+deploy/start-router.sh          idempotent router container start (used by systemd)
 deploy/download-model.sh        HF download + GGUF verification
 deploy/systemd/                 llama16-compose, llama16-gpu-watchdog
 scripts/gpu-watchdog.sh
@@ -174,8 +175,11 @@ docker rm -f llama16-router
 cd /opt/llama16
 cp configs/<profile>.env .env && docker compose up -d
 
-# model control (docker run path, dev only)
-./llama.sh start q38           # default: IQ3_S + MTP
+# router (default on dev)
+bash /opt/llama16/deploy/start-router.sh          # idempotent start/restart
+
+# single-model docker run wrapper (fallback, dev only)
+./llama.sh start q38           # IQ3_S + MTP
 ./llama.sh start q38-q3kxl     # quality, no MTP
 ./llama.sh start q38-long      # 128K context
 ./llama.sh status | stop | logs q38
@@ -364,7 +368,10 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 ## Constraints for agents
 
 - `deploy/install-llama.sh` is the shared provisioning script. Do not edit it
-  for local experiments; config changes belong in `configs/*.env`.
+  for local experiments; config changes belong in `configs/*.env` /
+  `configs/router.ini`. It defaults to router mode; `q38`, `q38-q3kxl` and
+  `q38-long` remain the single-model fallback. Both modes are systemd-aware
+  and the two runtime units conflict with each other.
 - Never commit `models/`, `.env`, `*.gguf`, or benchmark binaries.
 - Never recreate `/opt/llama` on the dev box; the legacy 6 GB stack is removed
   and archived (see Hardware and hosts).
@@ -390,7 +397,8 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
       (`benchmark/bench-batch.sh`).
 - [ ] Verify `--cache-reuse` behaviour in logs on `qwen35`.
 - [ ] Vision profile (mmproj) — deferred to v2, needs #31302 resolved.
-- [ ] Make `deploy/install-llama.sh` and `deploy/systemd/` router-aware;
-      today they install the single-model compose path while the dev box runs
-      the router manually.
+- [x] Make `deploy/install-llama.sh`, `deploy/start-router.sh`,
+      `deploy/systemd/llama16-router.service` and the GPU watchdog router-aware
+      (verified 2026-11-25: helper idempotent, watchdog ignores router idle
+      and unload transitions).
 - [ ] Decide prod host(s) and add them to the scope table.

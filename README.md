@@ -51,7 +51,8 @@ On a fresh Debian/Ubuntu host (bare metal or a Proxmox LXC with GPU passthrough)
 ```bash
 git clone https://github.com/noxgle/llama_16GB.git /opt/llama16
 cd /opt/llama16
-bash deploy/install-llama.sh q38            # IQ3_S + MTP, 48K context
+bash deploy/install-llama.sh                        # router mode (default)
+# or explicitly single-model: bash deploy/install-llama.sh q38
 ```
 
 The script installs Docker + nvidia-container-toolkit if missing, verifies the
@@ -200,8 +201,11 @@ Systemd units (installed with `install-llama.sh --with-systemd`):
 
 | Unit | Purpose |
 |---|---|
-| `llama16-compose.service` | `docker compose up -d` on boot |
+| `llama16-router.service` | starts `llama16-router` (default mode) via `deploy/start-router.sh` |
+| `llama16-compose.service` | single-model fallback stack (`Conflicts=` with router) |
 | `llama16-gpu-watchdog.timer` | every 2 min: detect CPU fallback / dead container and self-heal |
+
+`install-llama.sh --with-systemd` installs the unit matching the selected mode.
 
 ## Benchmarking
 

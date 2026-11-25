@@ -4,15 +4,25 @@
 # Intended to run from systemd timer every 2 minutes.
 #
 # Env overrides:
-#   WATCHDOG_CONTAINER  (default: llama16-llama-server-1)
+#   WATCHDOG_CONTAINER  (default: auto-detect router, then single-model container)
 #   WATCHDOG_PORT       (default: 8089)
 #   WATCHDOG_MIN_VRAM   (default: 2000 MiB — model must occupy several GiB)
 
 set -euo pipefail
 
-CONTAINER="${WATCHDOG_CONTAINER:-llama16-llama-server-1}"
+ROUTER_NAME="llama16-router"
+COMPOSE_NAME="llama16-llama-server-1"
+if [[ -n "${WATCHDOG_CONTAINER:-}" ]]; then
+    CONTAINER="$WATCHDOG_CONTAINER"
+elif docker ps --format '{{.Names}}' | grep -qx "$ROUTER_NAME"; then
+    CONTAINER="$ROUTER_NAME"
+else
+    CONTAINER="$COMPOSE_NAME"
+fi
+[[ "$CONTAINER" == "$ROUTER_NAME" ]] && ROUTER=1 || ROUTER=0
 PORT="${WATCHDOG_PORT:-8089}"
 MIN_VRAM="${WATCHDOG_MIN_VRAM:-2000}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_FILE="/var/log/llama16-gpu-watchdog.log"
 LOCK_FILE="/tmp/llama16-watchdog.lock"
 COUNTER_FILE="/tmp/llama16-watchdog-attempts"
@@ -41,9 +51,35 @@ is_cpu_fallback() {
         return 0
     fi
 
+    # Router with all presets unloaded legitimately uses ~3 MiB of VRAM.
+    # Only apply the VRAM threshold when a model instance is actually loaded.
+    if (( ROUTER )); then
+        local loaded
+        loaded=$(curl -sf "http://localhost:${PORT}/models" 2>/dev/null \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if any(m.get("status",{}).get("value") == "loaded" for m in d.get("data", [])) else "no")' 2>/dev/null || echo "no")
+        if [[ "$loaded" != "yes" ]]; then
+            log "DETECT: router has no loaded model — VRAM check skipped"
+            return 1
+        fi
+    fi
+
     local vram
     vram=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "")
     if [[ -n "${vram}" && "${vram}" -lt "${MIN_VRAM}" ]]; then
+        # Router transitions (unload/load of a child) briefly drop VRAM to
+        # ~3 MiB. Require a second low sample with a model still reported as
+        # loaded before declaring CPU fallback.
+        if (( ROUTER )); then
+            sleep 10
+            local loaded2 vram2
+            loaded2=$(curl -sf "http://localhost:${PORT}/models" 2>/dev/null \
+                | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if any(m.get("status",{}).get("value") == "loaded" for m in d.get("data", [])) else "no")' 2>/dev/null || echo "no")
+            vram2=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "")
+            if [[ "$loaded2" != "yes" || -z "${vram2}" || "${vram2}" -ge "${MIN_VRAM}" ]]; then
+                log "DETECT: transient low VRAM during router transition (${vram} -> ${vram2} MiB), ignored"
+                return 1
+            fi
+        fi
         log "DETECT: VRAM usage ${vram} MiB < ${MIN_VRAM} MiB"
         return 0
     fi
@@ -113,7 +149,13 @@ main() {
 
     if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
         log "ERROR: container $CONTAINER is not running"
-        exit 1
+        if (( ROUTER )) && [[ -f "$ROOT/deploy/start-router.sh" ]]; then
+            log "REPAIR: recreating router container"
+            LLAMA_DIR="$ROOT" bash "$ROOT/deploy/start-router.sh" >> "$LOG_FILE" 2>&1 || true
+            docker ps --format '{{.Names}}' | grep -qx "$CONTAINER" || exit 1
+        else
+            exit 1
+        fi
     fi
 
     local health

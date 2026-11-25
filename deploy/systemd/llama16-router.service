@@ -1,0 +1,21 @@
+[Unit]
+Description=llama_16GB router mode (llama-server, multiple presets)
+Documentation=https://github.com/noxgle/llama_16GB
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+Conflicts=llama16-compose.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/llama16
+Environment=LLAMA_DIR=/opt/llama16
+Environment=LLAMA_IMAGE=ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1
+ExecStart=/opt/llama16/deploy/start-router.sh
+ExecStop=/usr/bin/docker rm -f llama16-router
+TimeoutStartSec=600
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

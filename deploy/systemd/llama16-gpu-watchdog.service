@@ -1,7 +1,7 @@
 [Unit]
 Description=llama_16GB GPU watchdog — detects CPU fallback and self-heals
 Documentation=https://github.com/noxgle/llama_16GB
-After=llama16-compose.service docker.service
+After=llama16-router.service llama16-compose.service docker.service
 
 [Service]
 Type=oneshot
