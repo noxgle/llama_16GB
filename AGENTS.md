@@ -297,12 +297,15 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 | 49152 | 51.1 | 877.0 | 26.1 s | 14424 MiB |
 | 65536 | 48.3 | 843.2 | 36.2 s | 15110 MiB |
 
-- 64K near-full prefill (≈39K tokens, `probe-ctx.sh 65536 0.90`): prefill 819.7
+- 64K near-full prefill (≈39K tokens, a custom curl probe at 90% of the context): prefill 819.7
   tok/s, gen 38.1 tok/s, VRAM 15112 MiB — fits, but leaves ~1.9 GiB headroom.
 - 128K + MTP OOMs during prefill (llama-server aborts with CUDA OOM at
   `ggml_cuda_mul_mat_q`). Use `configs/qwen3.8-27b-iq3s-longctx.env` (MTP off,
   q4_0 KV) and validate there.
 - MTP is worth it here: gen ≈ 51 tok/s at 48K vs ≈ 25–30 without (hypothesis).
+- 128K longctx profile (IQ3_S, SPEC_TYPE=none, q4_0 KV, CTX=131072) probe
+  (`probe-ctx.sh 131072 0.40`): prefill 881.1 tok/s, gen 19.4 tok/s,
+  VRAM after 13992 MiB — fits on the 16 GB card.
 
 ## Upstream issues to watch
 
@@ -330,8 +333,9 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 
 - [x] Validate 48K / 32K / 128K contexts on the 5060 Ti; record real VRAM peaks
       (measured 2026-11-25; see "Measured context range" above).
-- [ ] Validate 128K on the 5060 Ti with the longctx profile; confirm it fits and
-      compare quality vs context trade-off with IQ3_S.
+- [x] Validate 128K on the 5060 Ti with the longctx profile; confirm it fits
+      (measured 2026-11-25: fits, VRAM after ≈13992 MiB, prefill ≈881 tok/s).
+      Note: without MTP gen ≈ 19 tok/s; quality comparison open (TODO above).
 - [ ] Confirm whether `UD-Q3_K_XL` fits 32K and whether it beats `IQ3_S` on the
       knowledge suite (quality vs context trade-off).
 - [x] Sweep `SPEC_DRAFT_N_MAX` 0–4; pick per-profile default (run

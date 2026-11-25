@@ -164,6 +164,18 @@ Raw CSVs: `benchmark/vram-20261125-113852.csv` (script output printed to the
 console log as well). Measured near-full-context 64K prefill via `probe-ctx.sh 65536 0.90`:
 prefill 819.7 tok/s, gen 38.1 tok/s, VRAM 15112 MiB.
 
+MTP sweep (CTX=32768, `benchmark/bench-mtp-sweep.sh 1 2 3 4`,
+CSV `benchmark/mtp-sweep-20261125-120054.csv`):
+
+| n_max | avg gen tok/s | avg accept rate |
+|---|---|---|
+| 1 | 48.6 | 0.82 |
+| 2 | 55.2 | 0.71 |
+| 3 | 62.0 | 0.63 |
+| 4 | 65.7 | 0.58 |
+
+Default `n_max=2` sits in the sweet spot; `n_max=3` buys a bit more gen speed.
+
 Expected order of magnitude for 448 GB/s memory bandwidth: 25–30 tok/s without
 MTP, 35–45 tok/s with MTP. Treat that as a hypothesis until measured.
 

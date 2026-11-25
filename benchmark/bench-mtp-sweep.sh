@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# MTP sweep: measure speculative decoding benefit for --spec-draft-n-max 0..4.
+# MTP sweep: measure speculative decoding benefit for --spec-draft-n-max.
+#
+# NOTE: n_max=0 with SPEC_TYPE=draft-mtp aborts llama-server in b12716
+# (GGML_ASSERT n_outputs_max <= cparams.n_outputs_max) — leave it out.
 #
 # Requires the MTP draft model (configs/qwen3.8-27b-iq3s-mtp.env).
 # n_max=0 disables drafting at runtime, which gives the non-MTP baseline
@@ -73,10 +76,15 @@ PY
         response=$(curl -s --max-time 600 "http://localhost:$PORT/v1/chat/completions" \
             -H 'Content-Type: application/json' -d @"$PAYLOAD")
 
-        gen=$(json_num "$response" predicted_per_second)
-        prefill=$(json_num "$response" prompt_per_second)
-        draft_n=$(json_num "$response" draft_n)
-        draft_acc=$(json_num "$response" draft_n_accepted)
+        [[ -n "$response" ]] || {
+            echo "WARN: empty response at n_max=$n probe=$i (server may have aborted)" >&2
+            continue
+        }
+
+        gen=$(json_num "$response" predicted_per_second || true)
+        prefill=$(json_num "$response" prompt_per_second || true)
+        draft_n=$(json_num "$response" draft_n || true)
+        draft_acc=$(json_num "$response" draft_n_accepted || true)
 
         if [[ -z "$gen" ]]; then
             echo "FAIL: no timings at n_max=$n probe=$i — $(echo "$response" | head -c 300)" >&2
