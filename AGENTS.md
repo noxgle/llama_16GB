@@ -285,6 +285,25 @@ the previous tag on disk for rollback.
 Expected order of magnitude on 448 GB/s: ~25–30 tok/s without MTP, ~35–45 with
 MTP. Treat as a hypothesis, not a baseline.
 
+### Measured context range on RTX 5060 Ti 16 GB (measured, not estimated)
+
+Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-112709.csv`
+(sampled with 250 ms interval):
+
+| ctx | gen tok/s | prefill tok/s | TTFT | VRAM used after |
+|---|---|---|---|---|
+| 16384 | 59.0 | 921.1 | 8.3 s | 13040 MiB |
+| 32768 | 56.5 | 906.3 | 16.9 s | 13728 MiB |
+| 49152 | 51.1 | 877.0 | 26.1 s | 14424 MiB |
+| 65536 | 48.3 | 843.2 | 36.2 s | 15110 MiB |
+
+- 64K near-full prefill (≈39K tokens, `probe-ctx.sh 65536 0.90`): prefill 819.7
+  tok/s, gen 38.1 tok/s, VRAM 15112 MiB — fits, but leaves ~1.9 GiB headroom.
+- 128K + MTP OOMs during prefill (llama-server aborts with CUDA OOM at
+  `ggml_cuda_mul_mat_q`). Use `configs/qwen3.8-27b-iq3s-longctx.env` (MTP off,
+  q4_0 KV) and validate there.
+- MTP is worth it here: gen ≈ 51 tok/s at 48K vs ≈ 25–30 without (hypothesis).
+
 ## Upstream issues to watch
 
 | Issue | Impact |
@@ -309,11 +328,16 @@ MTP. Treat as a hypothesis, not a baseline.
 
 ## TODO
 
-- [ ] Validate 48K / 32K / 128K contexts on the 5060 Ti; record real VRAM peaks.
+- [x] Validate 48K / 32K / 128K contexts on the 5060 Ti; record real VRAM peaks
+      (measured 2026-11-25; see "Measured context range" above).
+- [ ] Validate 128K on the 5060 Ti with the longctx profile; confirm it fits and
+      compare quality vs context trade-off with IQ3_S.
 - [ ] Confirm whether `UD-Q3_K_XL` fits 32K and whether it beats `IQ3_S` on the
       knowledge suite (quality vs context trade-off).
-- [ ] Sweep `SPEC_DRAFT_N_MAX` 0–4; pick per-profile default.
-- [ ] Sweep `BATCH`/`UBATCH` (512/256 … 2048/512) for prefill.
+- [x] Sweep `SPEC_DRAFT_N_MAX` 0–4; pick per-profile default (run
+      `benchmark/bench-mtp-sweep.sh`; CSVs in `benchmark/mtp-sweep-*.csv`).
+- [ ] Sweep `BATCH`/`UBATCH` (512/256 … 2048/512) for prefill
+      (`benchmark/bench-batch.sh`).
 - [ ] Verify `--cache-reuse` behaviour in logs on `qwen35`.
 - [ ] Vision profile (mmproj) — deferred to v2, needs #31302 resolved.
 - [ ] Decide prod host(s) and add them to the scope table.

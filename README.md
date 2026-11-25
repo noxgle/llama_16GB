@@ -150,9 +150,19 @@ run when the model is not on the GPU.
 Raw CSVs/Markdown land in `benchmark/` (gitignored except for the scripts).
 Measured numbers go into the table below — only real measurements, no estimates.
 
+Hardware for the table: RTX 5060 Ti 16 GB (driver 580.95.05, CUDA 12.9.2,
+sm_120a, llama.cpp `b12716`, image `ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1`).
+
 | Config | Gen tok/s | Prefill tok/s | VRAM peak | Image |
 |---|---|---|---|---|
-| _not measured yet_ | — | — | — | — |
+| `qwen3.8-27b-iq3s-mtp.env`, ctx=16384 | 59.1 | 921.5 | 13040 MiB | `stable-b12716-v1` |
+| `qwen3.8-27b-iq3s-mtp.env`, ctx=32768 | 56.5 | 907.3 | 13728 MiB | `stable-b12716-v1` |
+| `qwen3.8-27b-iq3s-mtp.env`, ctx=49152 (default) | 51.1 | 878.2 | 14424 MiB | `stable-b12716-v1` |
+| `qwen3.8-27b-iq3s-mtp.env`, ctx=65536 (near-full prompt) | 48.3 | 845.2 | 15110 MiB | `stable-b12716-v1` |
+
+Raw CSVs: `benchmark/vram-20261125-113852.csv` (script output printed to the
+console log as well). Measured near-full-context 64K prefill via `probe-ctx.sh 65536 0.90`:
+prefill 819.7 tok/s, gen 38.1 tok/s, VRAM 15112 MiB.
 
 Expected order of magnitude for 448 GB/s memory bandwidth: 25–30 tok/s without
 MTP, 35–45 tok/s with MTP. Treat that as a hypothesis until measured.
