@@ -140,7 +140,7 @@ configs/                        model profiles (*.env, sourced as bash) + router
 deploy/install-llama.sh         single-command provisioning (router by default)
 deploy/start-router.sh          idempotent router container start (used by systemd)
 deploy/download-model.sh        HF download + GGUF verification
-deploy/systemd/                 llama16-compose, llama16-gpu-watchdog
+deploy/systemd/                 llama16-router, llama16-compose, llama16-gpu-watchdog
 scripts/gpu-watchdog.sh
 Dockerfile                      llama-server build (CUDA 12.9, sm_120)
 docker-compose.yml              production deployment
