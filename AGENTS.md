@@ -112,7 +112,9 @@ VRAM budget = weights + optional MTP + KV + ~0.15 GiB recurrent state +
 ## Supported profiles
 
 Common: `NGLAYERS=999`, `--load-mode mlock`, `--fit off`, `PARALLEL=1`,
-`CTX_CHECKPOINTS=4`, `CACHE_RAM=4096`, `--alias qwen3.8-27b`.
+`CTX_CHECKPOINTS=8`, `CACHE_RAM=8192`, `REPEAT_PENALTY=1.0`, `--alias qwen3.8-27b`.
+`iq3s-mtp` uses `SPEC_TYPE=draft-mtp,ngram-mod`; the no-MTP profiles use
+`SPEC_TYPE=ngram-mod`. All three flags are present in b12716; no rebuild needed.
 
 Single-model compose profiles (fallback path):
 
@@ -355,6 +357,20 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
   long context, q8_0 only if you have VRAM headroom and want max fidelity.
 - 128K + q8_0 (no MTP) does NOT even load: compute pp buffers (~740 MiB) cannot
   be allocated. Max measured q8_0 context without MTP: 96K (98304).
+- Tuning from forum/field measurements (2026-11-25, source:
+  https://github.com/joanmedina/qwen3-llama-cpp-inference-tuning, reproducible
+  data for the same model, different hardware — relative effects transfer):
+  - `draft-mtp,ngram-mod` + `n_max=2` + `repeat-penalty 1.0` is now the default.
+    Measured on our box on a copy/edit workload: gen **282.6 / 308.5 tok/s**
+    (draft accepted 1155/1158 and 1165/1206) vs **63.3 / 63.1 tok/s** with
+    MTP only — ~4.6–4.9x on repeated text. Reasoning gains nothing (as expected).
+  - `CACHE_RAM=8192` + `CTX_CHECKPOINTS=8` replace 4096/4 (the field report's
+    failure configuration). On a 39K-chat return test both settings had the
+    same result (39065 cached tokens, ~2 s), so the benefit is for 65K+ chats
+    and 128K profiles — not yet measured here. 30 GB host RAM has 28 GB free
+    after the change.
+  - A/B harness: `benchmark/tune-ab.sh` with the `iq3s-mtp-base` preset in
+    `configs/router.ini` (old settings, for comparison only).
 
 ## Upstream issues to watch
 
@@ -394,7 +410,10 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 - [x] Sweep `SPEC_DRAFT_N_MAX` 0–4; pick per-profile default (run
       `benchmark/bench-mtp-sweep.sh`; CSVs in `benchmark/mtp-sweep-*.csv`).
 - [ ] Sweep `BATCH`/`UBATCH` (512/256 … 2048/512) for prefill
-      (`benchmark/bench-batch.sh`).
+      (`benchmark/bench-batch.sh`). Field data: `ubatch 2048` is 23–28 % slower
+      than 1024, so keep <= 1024.
+- [ ] Measure return-to-chat / compaction at 65K–128K with the new cache size;
+      39K already works on both old and new settings.
 - [ ] Verify `--cache-reuse` behaviour in logs on `qwen35`.
 - [ ] Vision profile (mmproj) — deferred to v2, needs #31302 resolved.
 - [x] Make `deploy/install-llama.sh`, `deploy/start-router.sh`,

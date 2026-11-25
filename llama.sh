@@ -82,6 +82,7 @@ start() {
         --gpu-layers-draft "${GPU_LAYERS_DRAFT:-0}"
         --spec-draft-n-min "${SPEC_DRAFT_N_MIN:-0}"
         --spec-draft-p-min "${SPEC_DRAFT_P_MIN:-0.0}"
+        --repeat-penalty "${REPEAT_PENALTY:-1.0}"
     )
 
     if [[ -n "${MMPROJ:-}" ]]; then

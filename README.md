@@ -93,6 +93,11 @@ For the default router deployment, use `configs/router.ini` instead.
 the MTP draft head (another 1.28 GiB). `iq3s-longctx` trades KV precision and
 MTP for 128K of context.
 
+All profiles now use `CACHE_RAM=8192`, `CTX_CHECKPOINTS=8` and
+`REPEAT_PENALTY=1.0`. `iq3s-mtp` uses `draft-mtp,ngram-mod` and the no-MTP
+profiles use `ngram-mod` (field-tested for agent copy/edit workloads; see
+[Benchmarking](#benchmarking)).
+
 Fallbacks when a profile OOMs: 48K → 40K (default), 32K → 24K (q3kxl), or switch
 `CACHE_TYPE_K/V` to `q4_0`. Do **not** add MoE flags — the model has no experts.
 
@@ -217,6 +222,7 @@ run when the model is not on the GPU.
 ./benchmark/bench-mtp-sweep.sh                # SPEC_DRAFT_N_MAX 0..4, acceptance rate
 ./benchmark/bench-batch.sh                    # BATCH/UBATCH prefill sweep
 ./benchmark/bench-knowledge.sh                # small deterministic quality suite
+./benchmark/tune-ab.sh                        # router A/B: tuned vs iq3s-mtp-base
 ```
 
 Raw CSVs/Markdown land in `benchmark/` (gitignored except for the scripts).
@@ -247,6 +253,18 @@ CSV `benchmark/mtp-sweep-20261125-120054.csv`):
 | 4 | 65.7 | 0.58 |
 
 Default `n_max=2` sits in the sweet spot; `n_max=3` buys a bit more gen speed.
+
+`draft-mtp,ngram-mod` vs MTP alone (`benchmark/tune-ab.sh`, same GPU, two
+copy/edit prompts, 2026-11-25):
+
+| Preset | gen tok/s (copy 1 / 2) | draft accepted |
+|---|---|---|
+| `iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
+| `iq3s-mtp-base` (MTP only, A/B baseline) | 63.3 / 63.1 | 798/801, 797/803 |
+
+A 39K-token chat followed by a foreign request returned with 39065 cached
+tokens in ~2 s on **both** cache settings; the 8192/8 benefit is expected on
+65K+ chats (as measured in the field guide linked in `AGENTS.md`).
 
 Expected order of magnitude for 448 GB/s memory bandwidth: 25–30 tok/s without
 MTP, 35–45 tok/s with MTP. Treat that as a hypothesis until measured.
