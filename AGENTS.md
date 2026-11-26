@@ -228,6 +228,14 @@ silently produce nonsense. If VRAM is short: lower `CTX`, switch KV to `q4_0`,
 or drop MTP. Do not partially offload layers unless a profile explicitly does it
 with measured numbers.
 
+The newer MoE cache flags exist in b12716 (`--moe-cache-mib`,
+`--moe-cache-cpu-share`) but are equally N/A here: they cache routed experts
+that live in host RAM and need `-cmoe` / `-ncmoe` / `-ot exps=CPU`. With a dense
+model the cache either disables itself or just wastes VRAM. The draft variants
+`--spec-draft-cpu-moe` / `--spec-draft-n-cpu-moe` are also N/A — our MTP head is
+dense. Only consider these (plus `scripts/moe-cache-tune.py`) if a real MoE
+model is deployed later.
+
 ### MTP is a separate GGUF and `-hf` cannot fetch it
 
 `-hf` with files in subdirectories (`MTP/`) fails with
