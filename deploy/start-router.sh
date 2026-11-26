@@ -48,6 +48,7 @@ else
         --models-preset /router.ini \
         --models-max "$MODELS_MAX" --models-memory-margin 512 \
         --host 0.0.0.0 --port "$PORT" --alias router --jinja --threads-http 2 --fit off \
+        --metrics \
         >/dev/null
 fi
 

@@ -77,6 +77,7 @@ start() {
         --cache-reuse "${CACHE_REUSE:-256}"
         --chat-template-kwargs "{\"preserve_thinking\": ${PRESERVE_THINKING:-false}, \"reasoning_effort\": \"${REASONING_EFFORT:-medium}\"}"
         --threads-http "${THREADS_HTTP:-2}"
+        --metrics
         --spec-type "${SPEC_TYPE:-none}"
         --spec-draft-n-max "${SPEC_DRAFT_N_MAX:-2}"
         --gpu-layers-draft "${GPU_LAYERS_DRAFT:-0}"

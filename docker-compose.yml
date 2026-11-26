@@ -103,6 +103,7 @@ services:
       - '{"preserve_thinking": ${PRESERVE_THINKING:-false}, "reasoning_effort": "${REASONING_EFFORT:-medium}"}'
       - "--threads-http"
       - "${THREADS_HTTP:-2}"
+      - "--metrics"
       # MTP speculative decoding: only `draft-mtp` is accepted together with -md.
       - "--spec-type"
       - "${SPEC_TYPE:-none}"

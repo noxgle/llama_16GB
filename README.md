@@ -128,7 +128,8 @@ docker run -d --name llama16-router --restart unless-stopped \
     -v /opt/llama16/configs/router.ini:/router.ini:ro \
     ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1 \
     --models-preset /router.ini --models-max 1 --models-memory-margin 512 \
-    --host 0.0.0.0 --port 8089 --alias router --jinja --threads-http 2 --fit off
+    --host 0.0.0.0 --port 8089 --alias router --jinja --threads-http 2 --fit off \
+    --metrics
 ```
 
 Use it:
@@ -138,6 +139,9 @@ curl -s localhost:8089/models | jq '.data[] | {id, status: .status.value}'
 
 curl -s localhost:8089/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
+
+curl -s 'localhost:8089/metrics?model=iq3s-mtp' | grep llamacpp   # Prometheus
+curl -s 'localhost:8089/slots?model=iq3s-mtp' | jq '.[0].n_ctx'    # slot info
 
 curl -s -X POST localhost:8089/models/unload -H 'Content-Type: application/json' \
   -d '{"model":"iq3s-mtp"}'
@@ -169,7 +173,9 @@ Caveats: only one model fits in 16 GB at a time (`--models-max 1`); a cold
 switch re-reads 12–13 GB of weights; the router itself never touches the GPU.
 This is the **default deployment mode** on the dev box and the default of
 `install-llama.sh`; `docker-compose.yml`, `.env` and `llama.sh` are the
-single-model fallback path.
+single-model fallback path. Changing router CLI flags requires recreating the
+container (`docker rm -f llama16-router && bash deploy/start-router.sh`) —
+`docker restart` keeps the old args.
 
 ## Memory budget
 

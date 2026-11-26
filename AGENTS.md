@@ -195,6 +195,12 @@ curl -s http://localhost:8089/v1/chat/completions \
 
 # --- VRAM peak during a run ---
 nvidia-smi --query-gpu=memory.used --format=csv,noheader -lms 500
+
+# --- monitoring (--metrics is enabled in start-router.sh, compose and llama.sh) ---
+curl -s 'http://localhost:8089/slots?model=iq3s-mtp' | jq '.[0] | {n_ctx, speculative, n_prompt_tokens}'
+curl -s 'http://localhost:8089/metrics?model=iq3s-mtp' | grep llamacpp | head
+# In router mode all GET endpoints need ?model=<preset>; without it: 400.
+# POST /slots/{id}?action=save additionally needs --slot-save-path (not enabled).
 ```
 
 ## Deployment gotchas (read before touching servers)
@@ -283,6 +289,20 @@ disable thinking globally for coding profiles.
 
 `:latest` tracks untested upstream master. Pin `stable-b<tag>-v1` images; keep
 the previous tag on disk for rollback.
+
+### Monitoring endpoints
+
+`--metrics` is passed by `deploy/start-router.sh` (inherited by child instances),
+by `docker-compose.yml` and by `llama.sh`. `GET /metrics` and `GET /slots` work;
+in router mode they require `?model=<preset id>` (otherwise 400). Before this
+change `/metrics?model=...` returned 501. Useful counters:
+`llamacpp:spec_decode_num_draft_tokens_total` and
+`llamacpp:spec_decode_num_accepted_tokens_total` (draft acceptance over time).
+Router CLI flags are baked into the container at creation: `docker restart`
+keeps the old args, so after editing `start-router.sh` use
+`docker rm -f llama16-router && bash deploy/start-router.sh` (or `sync.sh push`
+followed by that pair). Preset changes in `router.ini` only need a restart or
+`GET /models?reload=1`.
 
 ### Router mode is the default (2026-11-25)
 
