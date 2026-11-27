@@ -13,7 +13,7 @@
 # Environment:
 #   LLAMA_REPO   git repo (default: https://github.com/noxgle/llama_16GB.git)
 #   LLAMA_DIR    install dir (default: /opt/llama16)
-#   LLAMA_IMAGE  image (default: ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1)
+#   LLAMA_IMAGE  image (default: ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1)
 #
 # Prerequisites: root, Debian 12+/Ubuntu 22.04+, GPU visible on the host.
 # For Proxmox LXC GPU passthrough see the error message in step 3.
@@ -39,8 +39,8 @@ done
 
 REPO_URL="${LLAMA_REPO:-https://github.com/noxgle/llama_16GB.git}"
 INSTALL_DIR="${LLAMA_DIR:-/opt/llama16}"
-LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1}"
-LLAMA_REF="${LLAMA_REF:-b12716}"
+LLAMA_IMAGE="${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1}"
+LLAMA_REF="${LLAMA_REF:-b12811}"
 GGML_CUDA_ARCH="${GGML_CUDA_ARCH:-120a}"
 
 case "$MODEL" in
@@ -247,7 +247,7 @@ if $WITH_SYSTEMD; then
     cp "$INSTALL_DIR/deploy/systemd/llama16-gpu-watchdog.timer" /etc/systemd/system/
     sed -i "s#/opt/llama16#$INSTALL_DIR#g" /etc/systemd/system/llama16-*.service
     sed -i "s#/opt/llama16#$INSTALL_DIR#g" /etc/systemd/system/llama16-gpu-watchdog.timer
-    sed -i "s#stable-b12716-v1#${LLAMA_IMAGE##*:}#g" "/etc/systemd/system/$RUNTIME_UNIT"
+    sed -i "s#stable-b12811-v1#${LLAMA_IMAGE##*:}#g" "/etc/systemd/system/$RUNTIME_UNIT"
     systemctl daemon-reload
     systemctl enable --now "$RUNTIME_UNIT"
     systemctl enable --now llama16-gpu-watchdog.timer

@@ -11,7 +11,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/llama16
 Environment=LLAMA_DIR=/opt/llama16
-Environment=LLAMA_IMAGE=ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1
+Environment=LLAMA_IMAGE=ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1
 ExecStart=/opt/llama16/deploy/start-router.sh
 ExecStop=/usr/bin/docker rm -f llama16-router
 TimeoutStartSec=600

@@ -107,7 +107,7 @@ Fallbacks when a profile OOMs: 48K → 40K (default), 32K → 24K (q3kxl), or sw
 
 ## Router mode (experimental)
 
-llama.cpp `b12716` can run as a **router**: one `llama-server` started *without*
+llama.cpp `b12811` can run as a **router**: one `llama-server` started *without*
 `-m`, using `--models-preset` to expose several named configurations. Each
 request is dispatched by its `model` field; the router starts and stops child
 `llama-server` processes on demand. **Docker is not restarted** — only the
@@ -128,7 +128,7 @@ docker run -d --name llama16-router --restart unless-stopped \
     -p 8089:8089 \
     -v /opt/llama16/models:/models:ro \
     -v /opt/llama16/configs/router.ini:/router.ini:ro \
-    ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1 \
+    ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1 \
     --models-preset /router.ini --models-max 1 --models-memory-margin 512 \
     --host 0.0.0.0 --port 8089 --alias router --jinja --threads-http 2 --fit off \
     --metrics
@@ -248,7 +248,7 @@ Raw CSVs/Markdown land in `benchmark/` (gitignored except for the scripts).
 Measured numbers go into the table below — only real measurements, no estimates.
 
 Hardware for the table: RTX 5060 Ti 16 GB (driver 580.95.05, CUDA 12.9.2,
-sm_120a, llama.cpp `b12716`, image `ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1`).
+sm_120a, measured on llama.cpp `b12716` / `stable-b12716-v1`; new pin is `b12811` / `stable-b12811-v1`).
 
 | Config | Gen tok/s | Prefill tok/s | VRAM peak | Image |
 |---|---|---|---|---|

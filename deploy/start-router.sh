@@ -5,7 +5,7 @@
 # deploy/install-llama.sh and deploy/systemd/llama16-router.service.
 #
 # Env overrides:
-#   LLAMA_IMAGE            image (default: pinned stable-b12716-v1)
+#   LLAMA_IMAGE            image (default: pinned stable-b12811-v1)
 #   LLAMA_DIR              install dir (default: directory containing this script's parent)
 #   LLAMA_PORT             host/container port (default: 8089)
 #   LLAMA_ROUTER_CONTAINER container name (default: llama16-router)
@@ -15,7 +15,7 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LLAMA_DIR="${LLAMA_DIR:-$DIR}"
-IMAGE="${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1}"
+IMAGE="${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1}"
 PORT="${LLAMA_PORT:-8089}"
 NAME="${LLAMA_ROUTER_CONTAINER:-llama16-router}"
 MODELS_MAX="${LLAMA_MODELS_MAX:-1}"

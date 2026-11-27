@@ -7,13 +7,13 @@ name: llama16
 
 services:
   llama-server:
-    image: ${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12716-v1}
+    image: ${LLAMA_IMAGE:-ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1}
     build:
       context: .
       dockerfile: Dockerfile
       args:
         LLAMA_REPO: "${LLAMA_REPO:-https://github.com/ggml-org/llama.cpp.git}"
-        LLAMA_REF: "${LLAMA_REF:-b12716}"
+        LLAMA_REF: "${LLAMA_REF:-b12811}"
         LLAMA_NATIVE: "${LLAMA_NATIVE:-OFF}"
         GGML_CUDA_ARCH: "${GGML_CUDA_ARCH:-120a}"
         BUILD_JOBS: "${BUILD_JOBS:-4}"

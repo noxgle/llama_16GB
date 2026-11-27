@@ -15,7 +15,7 @@ model **fully in VRAM**. Do not carry over 6 GB assumptions.
 
 Repo status (2026-11-25): scaffold complete and pushed to
 `github.com/noxgle/llama_16GB`. CI builds `ghcr.io/noxgle/llama-server-16gb`
-from llama.cpp `b12716` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). All three GGUFs
+from llama.cpp `b12811` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). All three GGUFs
 (IQ3_S, Q3_K_XL, MTP) are in `/opt/llama16/models` on the dev box. Hardware
 validation is complete — VRAM/throughput numbers in this file are **measured**.
 The dev box runs **router mode by default** (container `llama16-router`);
@@ -114,7 +114,7 @@ VRAM budget = weights + optional MTP + KV + ~0.15 GiB recurrent state +
 Common: `NGLAYERS=999`, `--load-mode mlock`, `--fit off`, `PARALLEL=1`,
 `CTX_CHECKPOINTS=8`, `CACHE_RAM=8192`, `REPEAT_PENALTY=1.0`, `--alias qwen3.8-27b`.
 `iq3s-mtp` uses `SPEC_TYPE=draft-mtp,ngram-mod`; the no-MTP profiles use
-`SPEC_TYPE=ngram-mod`. All three flags are present in b12716; no rebuild needed.
+`SPEC_TYPE=ngram-mod`. All three flags are present in b12811; no rebuild needed.
 
 Single-model compose profiles (fallback path):
 
@@ -144,10 +144,10 @@ Source `unsloth/Inkling-2-Mini-GGUF` @ `8078d149286eec7193795413b9e0643da6d11fa1
 native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 
 - **Use `Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file` renamed to `.gguf`.**
-  The root GGUF uses Unsloth's own layout and mainline b12716 rejects it.
+  The root GGUF uses Unsloth's own layout and mainline llama.cpp rejects it.
   `deploy/download-model.sh --model inkling2` handles repo/pin/rename.
 - Build requirement: ≥ b12611 (PR #32704 per-expert NVFP4 scales) and #32807
-  (host-expert copy corruption). b12716 includes both.
+  (host-expert copy corruption). b12811 includes both.
 - Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary,
   community recipe), `inkling2-mini-cmoe`, `inkling2-mini-noop`, `-b64`, `-b128`.
   `CTX=131072`, `q8_0` KV, `BATCH=1024`/`UBATCH=32`, `load-mode none` (mmap),
@@ -158,12 +158,12 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Keep host-tensor op offload **on** but `UBATCH<=32`: at 256 the compute
   buffer alone wants ~13 GiB (6,5 GiB even with selective `-ot`) and OOMs at
   128K. `--no-op-offload` works too but is much slower.
-- DSpark: PR #32218 was merged 24 Nov and b12716 **has** `draft-dspark`, but
-  every drafter published by Unsloth so far (21 Nov) fails to load:
-  `joint_proj.weight expected 2816x768, got 5120x768`. Tested the mainline
-  Q8_0/BF16-mainline files and the root Q8_0 file — all three fail. No MTP head,
-  so `spec-type none` remains. Unsloth claims DSpark adds ~1,11–1,24x decode,
-  but it needs updated drafter GGUFs; watch their HF repo.
+- DSpark: our b12716 predated PR #32218 (merged 24 Nov 20:11) — it had the
+  generic `draft-dspark` flag but not the Inkling draft-state width fix, so all
+  published drafters failed with `joint_proj expected 2816x768, got 5120x768`.
+  Pin bumped to b12811 (27 Nov), which contains #32218 plus the width/reseeding
+  fix; DSpark re-test with the new image is pending. Unsloth claims ~1,11–1,24x
+  decode speedup. No MTP head, so `spec-type none` until the test succeeds.
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
@@ -291,7 +291,7 @@ needs those flags. If VRAM is short: lower `CTX`, switch KV to `q4_0`,
 or drop MTP. Do not partially offload layers unless a profile explicitly does it
 with measured numbers.
 
-The newer MoE cache flags exist in b12716 (`--moe-cache-mib`,
+The newer MoE cache flags exist in b12811 (`--moe-cache-mib`,
 `--moe-cache-cpu-share`) but are equally N/A here: they cache routed experts
 that live in host RAM and need `-cmoe` / `-ncmoe` / `-ot exps=CPU`. With a dense
 model the cache either disables itself or just wastes VRAM. The draft variants

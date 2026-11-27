@@ -20,7 +20,7 @@ on:
       llama_ref:
         description: 'LLAMA_REF (tag, branch, or commit)'
         required: false
-        default: 'b12716'
+        default: 'b12811'
       cuda_arch:
         description: 'CMAKE_CUDA_ARCHITECTURES (e.g. 120a, 89;120a)'
         required: false
@@ -75,7 +75,7 @@ jobs:
             echo "cuda_arch=${{ inputs.cuda_arch }}" >> "$GITHUB_OUTPUT"
             echo "build_jobs=${{ inputs.build_jobs }}" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.ref_type }}" = "tag" ]; then
-            # stable tags embed the pinned llama.cpp b-tag, e.g. stable-b12716-v1
+            # stable tags embed the pinned llama.cpp b-tag, e.g. stable-b12811-v1
             if [[ "${{ github.ref_name }}" == stable* ]]; then
               stable_ref=$(printf '%s' "${{ github.ref_name }}" | grep -oE 'b[0-9]+' | head -1 || true)
               echo "llama_ref=${stable_ref:-master}" >> "$GITHUB_OUTPUT"
@@ -86,7 +86,7 @@ jobs:
             echo "build_jobs=4" >> "$GITHUB_OUTPUT"
           else
             # branch builds track the pinned ref, never upstream master
-            echo "llama_ref=b12716" >> "$GITHUB_OUTPUT"
+            echo "llama_ref=b12811" >> "$GITHUB_OUTPUT"
             echo "cuda_arch=120a" >> "$GITHUB_OUTPUT"
             echo "build_jobs=4" >> "$GITHUB_OUTPUT"
           fi
