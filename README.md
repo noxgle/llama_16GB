@@ -10,6 +10,12 @@ The Qwen profiles are dense: everything runs in VRAM, no expert offload.
 Inkling is MoE: non-looped experts live in host RAM while looped experts and
 all non-expert weights stay on the GPU. See [Profiles](#profiles).
 
+**Goal:** serve one model at a time on a **single 16 GB VRAM card** for
+individual/personal work — coding agents, chat and RAG — and use that card as
+efficiently as measured: 128K context where possible, the highest KV precision
+that fits, >= 20 tok/s generation and >= 200 tok/s prefill. Router mode just
+switches presets (`--models-max 1`); it is not multi-tenant serving.
+
 Forked in structure from [`noxgle/llama_6GB`](https://github.com/noxgle/llama_6GB),
 but the operating model is different — see [Not a 6 GB fork](#not-a-6-gb-fork).
 
@@ -96,6 +102,9 @@ For the default router deployment, use `configs/router.ini` instead.
 | `configs/qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S (11.2 GiB) | off | 128K | q4_0 | ~14.6 GiB |
 | `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q8_0 | 13442 MiB |
 
+> The router preset `qwen-iq3s-longctx` uses `q8_0` K / `q5_1` V with
+> `kv-unified = true` instead of `q4_0` (see [Router mode](#router-mode-experimental)).
+
 `UD-Q3_K_XL` is the quality option: it is ~1 GiB larger and leaves no room for
 the MTP draft head (another 1.28 GiB). `qwen-iq3s-longctx` trades KV precision and
 MTP for 128K of context.
@@ -106,7 +115,9 @@ use `ngram-mod`. Inkling uses `CACHE_RAM=4096`, `load-mode none` (mmap),
 `REASONING_BUDGET=8192` and the message `" thinking budget exceeded, answer now."`.
 
 Acceptance targets: 16 GB VRAM, 128K context, `q8_0` KV, generation >= 20 tok/s,
-prefill >= 200 tok/s; Q4 quant preferred, Q3 acceptable. Current status is in
+prefill >= 200 tok/s; Q4 quant preferred, Q3 acceptable. The 128K Qwen preset is
+an explicit exception (`q8_0` K / `q5_1` V + `kv-unified`): ~+1,4 GiB VRAM and
+~2–5% lower throughput for higher KV fidelity. Current status is in
 `AGENTS.md` → "Project targets".
 
 Fallbacks for the **dense Qwen** profiles: 48K → 40K, 32K → 24K, or KV → `q4_0`.
@@ -121,9 +132,9 @@ request is dispatched by its `model` field; the router starts and stops child
 child processes come and go.
 
 `configs/router.ini` defines six presets: `qwen-iq3s-mtp` (48K + MTP, tuned),
-`qwen-q3kxl` (32K), `qwen-iq3s-longctx` (128K, q4_0 KV), `inkling2-mini` (MoE, 128K, q8_0,
-selective CPU experts — primary), `inkling2-mini-balanced` and
-`inkling2-mini-dspark`.
+`qwen-q3kxl` (32K), `qwen-iq3s-longctx` (128K, q8_0 K / q5_1 V, kv-unified),
+`inkling2-mini` (MoE, 128K, q8_0, selective CPU experts — primary),
+`inkling2-mini-balanced` and `inkling2-mini-dspark`.
 
 Start it (stop the compose stack first — both use port 8089):
 
@@ -169,6 +180,12 @@ Measured on the 5060 Ti (2026-11-25), same Docker container throughout:
 These gen numbers were measured **before** the `ngram-mod`/cache tuning; they
 are still a valid baseline. See [Benchmarking](#benchmarking) for current
 throughput (copy/edit workloads reach ~280–310 tok/s).
+
+> `qwen-iq3s-longctx` numbers above were measured with `q4_0` KV. The current
+> router preset uses `q8_0` K / `q5_1` V with `kv-unified = true`: the +~10 %
+> gen came from `kv-unified`, while the higher KV precision costs ~2–5 % and
+> ~1,4 GiB extra VRAM. The compose profile
+> (`configs/qwen3.8-27b-iq3s-longctx.env`) still uses `q4_0` for both K and V.
 
 Caveats: only one model fits in 16 GB at a time (`--models-max 1`); a cold
 switch re-reads 12–13 GB of weights; the router itself never touches the GPU.
@@ -288,11 +305,28 @@ copy/edit prompts, 2026-11-25):
 | `qwen-iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
 | MTP only (old baseline, preset removed) | 63.3 / 63.1 | 798/801, 797/803 |
 
+### Long-context Qwen tuning (b12811, 90K unique prompt)
+
+| Preset / KV | VRAM | Prefill | Gen | Note |
+|---|---|---|---|---|
+| `qwen-iq3s-longctx` old `q4_0/q4_0` | 13984 MiB | 703,8 tok/s | 12,5 tok/s | before kv-unified |
+| + `kv-unified = true`, `q4_0/q4_0` | 13985 MiB | 701,0 tok/s | 14,7 tok/s | +~10% gen, same VRAM |
+| current `q8_0` K / `q5_1` V + `kv-unified` | 15393 MiB | 697,2 tok/s | 13,9 tok/s | chosen for KV fidelity |
+
+At 30K tokens: 22,4 tok/s with `q4_0/q4_0`+kv-unified vs 21,9 with `q8_0/q5_1`.
+`kv-offload` is enabled by default in b12811 and already puts KV on the GPU;
+`--no-kv-offload` frees ~2,3 GiB but drops gen to 2,7 tok/s. Adding the Qwen
+MTP head to 128K either OOMs (draft on GPU, ~15,6 GiB at load) or is slower
+(draft on CPU: 14,1 tok/s @90K, 20,7 @30K). MTP stays only in `qwen-iq3s-mtp` (48K).
+
 DSpark on b12811 is available as optional preset `inkling2-mini-dspark`
 (drafter: `Mainline_Support/dspark-Inkling-2-Mini-Q8_0.gguf_file` -> `.gguf`):
 repeated-text gen 40,8 tok/s (accept 206/276) vs 35,8 without, but no gain on
 short prompts and VRAM 15764 vs 14602 MiB — kept optional. No regression on
-Qwen (60,1 tok/s). `n_max=2` was slower than 3.
+Qwen (60,1 tok/s). `n_max=2` was slower than 3. DFlash2 (`draft-dflash2`, PR
+#33073 in b12811, GGUF from `na0x2c6/Inkling-2-Mini-DFlash2-GGUF`) is another
+Inkling-only drafter, not tested here. Neither applies to Qwen — Qwen uses
+`draft-mtp` + `ngram-mod` in `qwen-iq3s-mtp`.
 
 DEFAULT `inkling2-mini` keeps 128K + q8_0 KV and reaches **249–255 tok/s
 prefill** with gen 29–32 tok/s (ubatch 256, MoE cache off, VRAM 13442 MiB;
@@ -358,7 +392,7 @@ high|xhigh|max` or 0–0.99) and a hard `REASONING_BUDGET=8192`; allow more than
 | KV cache | full attention, all layers | 16 attention layers only (DeltaNet is recurrent) |
 | CUDA | 12.4, sm_89/PTX | 12.9, sm_120 |
 | Model source | `-hf` | local GGUFs (`-m`), because MTP lives in a subdirectory |
-| Context | 8–32K | 48K Qwen default, 128K Inkling default |
+| Context | 8–32K | 48K Qwen default, 128K Qwen/Inkling long-context |
 
 Carrying over 6 GB flags (`CPUMOE`, `-ot exps=CPU`, `--n-cpu-moe`) silently
 produces a broken configuration on a dense model.

@@ -6,17 +6,27 @@ configs, compose, or anything on the servers.
 ## What this project is
 
 Docker-based, OpenAI-compatible `llama-server` (llama.cpp + CUDA) tuned for
-**16 GB NVIDIA GPUs**, serving **`unsloth/Qwen3.8-27B-GGUF`** (dense 27B, hybrid
-DeltaNet/attention) in 2 quantizations: `UD-IQ3_S` (default) and `UD-Q3_K_XL`.
+**16 GB NVIDIA GPUs**, serving two models:
+- **`unsloth/Qwen3.8-27B-GGUF`** — dense 27B, hybrid DeltaNet/attention,
+  `UD-IQ3_S` (default) and `UD-Q3_K_XL`;
+- **`unsloth/Inkling-2-Mini-GGUF`** — 26B MoE with looped layers, `UD-Q4_K_M`.
+
+**Goal:** run one model at a time on a **single 16 GB VRAM card** for
+individual/personal work (coding agents, chat, RAG) and use that card as
+efficiently as measured settings allow: 128K context, highest KV precision that
+fits, >= 20 tok/s generation, >= 200 tok/s prefill. Router mode is a convenience
+for switching presets — it is **not** multi-tenant serving: only one child is
+resident at a time (`--models-max 1`).
 
 Forked in structure from `noxgle/llama_6GB`, but the operating model is
-**different**: 6 GB boxes run MoE with experts on CPU; a 16 GB box runs a dense
-model **fully in VRAM**. Do not carry over 6 GB assumptions.
+**different**: 6 GB boxes run MoE with experts on CPU; Inkling on a 16 GB box
+keeps non-looped experts in host RAM, while dense Qwen runs fully in VRAM.
+Do not carry over 6 GB assumptions.
 
-Repo status (2026-11-25): scaffold complete and pushed to
+Repo status (2026-11-27): production-tuned and pushed to
 `github.com/noxgle/llama_16GB`. CI builds `ghcr.io/noxgle/llama-server-16gb`
-from llama.cpp `b12811` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). All three GGUFs
-(IQ3_S, Q3_K_XL, MTP) are in `/opt/llama16/models` on the dev box. Hardware
+from llama.cpp `b12811` (CUDA 12.9.2, `GGML_CUDA_ARCH=120a`). All Qwen GGUFs (IQ3_S, Q3_K_XL, MTP) plus Inkling Q4_K_M and the DSpark drafter
+are in `/opt/llama16/models` on the dev box. Hardware
 validation is complete — VRAM/throughput numbers in this file are **measured**.
 The dev box runs **router mode by default** (container `llama16-router`);
 the single-model compose stack is the fallback path, not the default.
@@ -34,7 +44,7 @@ Every serving profile is expected to meet these on the dev box:
 |---|---|
 | GPU | 16 GB VRAM class (RTX 5060 Ti 16 GB, ~15,9 GiB usable) |
 | Context | **131072 tokens** per slot |
-| KV cache | **`q8_0`** for both K and V; a lower type (e.g. `q4_0`) is acceptable as a **measured, documented exception** when `q8_0` cannot fit the target context on 16 GB |
+| KV cache | **`q8_0`** for both K and V; mixed `q8_0` K / `q5_1` V or lower types are acceptable as **measured, documented exceptions** when `q8_0/q8_0` cannot fit the target context on 16 GB |
 | Generation | **>= 20 tok/s** (measured) |
 | Prefill | **>= 200 tok/s** (measured, unique prompts, no prefix-cache reuse) |
 | Weight quant | prefer **Q4 or higher** (Q4_K_M, Q4_K_XL); **Q3 is acceptable** (Q3_K_XL, IQ3_S, IQ3_XXS) when Q4 cannot fit the VRAM/throughput budget |
@@ -46,12 +56,15 @@ Status on 2026-11-27 (all numbers measured, not estimated):
 | `inkling2-mini` | 131072 | q8_0 | 28,9–35,6 | 248,9–254,8 | Q4_K_M | **YES** |
 | `qwen-iq3s-mtp` | 49152 | q8_0 | 51–63 | 878–921 | IQ3_S | ctx < 128K |
 | `qwen-q3kxl` | 32768 | q8_0 | 29 | ~907 | Q3_K_XL | ctx < 128K |
-| `qwen-iq3s-longctx` | 131072 | q4_0 | 19,4 | 881 | IQ3_S | KV q4_0, gen < 20 |
+| `qwen-iq3s-longctx` | 131072 | q8_0 K / q5_1 V | 13,9 @90K; 21,9 @30K | 697 @90K; 894 @30K | IQ3_S | below gen target; kept by explicit choice |
 
-Only the Inkling profile currently satisfies all targets. Lower KV precision
-is allowed case-by-case: on Qwen3.8-27B a 128K context with `q8_0` KV OOMs on a
-16 GB card (measured), so `qwen-iq3s-longctx` uses `q4_0`. Every such exception must
-be justified with measured VRAM/quality numbers and recorded in the table.
+Only the Inkling profile satisfies all targets. Qwen's 128K preset is an
+explicit trade-off accepted by the user: it uses `q8_0` K / `q5_1` V with
+`kv-unified = true` (VRAM 15393 MiB) for higher KV fidelity, at the cost of
+~1,4 GiB and ~2–5% throughput vs `q4_0/q4_0`. `q8_0` for **both** K and V at 128K
+does not fit (measured OOM). Lower KV types remain allowed when the alternative
+is not loading at all; every such choice must be justified with measured
+VRAM/quality numbers and recorded in the table.
 Before changing a profile, check it against this table and update the
 "Meets targets?" column with new numbers.
 
@@ -154,6 +167,9 @@ Single-model compose profiles (fallback path):
 | `qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL | off | 32K | q8_0 | ~13340 MiB |
 | `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | 13992 MiB |
 
+The compose fallback for longctx still uses `q4_0/q4_0` — compose has no
+`kv-unified` mapping yet; the router preset is the tuned one.
+
 **Default deployment = router mode** with six presets in `configs/router.ini`:
 Qwen `qwen-iq3s-mtp` (default), `qwen-q3kxl`, `qwen-iq3s-longctx`; Inkling `inkling2-mini` (primary),
 `inkling2-mini-balanced`, `inkling2-mini-dspark`.
@@ -197,6 +213,10 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   short prompt 33,6 vs 34,0 (no gain); VRAM 15764 vs 14602 MiB. `n_max=2` was
   worse (35,0 on both workloads). No gibberish. Kept optional, not default,
   because of the small short-prompt gain and only ~0,5 GiB VRAM headroom.
+  DFlash2 (`draft-dflash2`, PR #33073 in b12811) is another Inkling-only drafter
+  (GGUF from `na0x2c6/Inkling-2-Mini-DFlash2-GGUF`, Apache-2.0); not tested here.
+  Neither DSpark nor DFlash2 applies to Qwen — Qwen uses `draft-mtp` +
+  `ngram-mod` in `qwen-iq3s-mtp`.
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
@@ -498,21 +518,24 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 
 - 64K near-full prefill (≈39K tokens, a custom curl probe at 90% of the context): prefill 819.7
   tok/s, gen 38.1 tok/s, VRAM 15112 MiB — fits, but leaves ~1.9 GiB headroom.
-- 128K + MTP OOMs during prefill (llama-server aborts with CUDA OOM at
-  `ggml_cuda_mul_mat_q`). Use `configs/qwen3.8-27b-iq3s-longctx.env` (MTP off,
-  q4_0 KV) and validate there.
+- 128K + MTP on Qwen: with the draft head on GPU it loads at ~15616 MiB and
+  OOMs during long prefill; with draft on CPU + q4_0 draft KV it fits (~14330 MiB)
+  but is slower (90K gen 14,1 vs 14,7; 30K gen 20,7 vs 22,4). MTP stays off in
+  longctx; use it only in the 48K `qwen-iq3s-mtp` preset.
 - MTP is worth it here: gen ≈ 51 tok/s at 48K vs ≈ 25–30 without (hypothesis).
-- 128K qwen-iq3s-longctx profile (IQ3_S, SPEC_TYPE=none, q4_0 KV, CTX=131072) probe
-  (`probe-ctx.sh 131072 0.40`): prefill 881.1 tok/s, gen 19.4 tok/s,
-  VRAM after 13992 MiB — fits on the 16 GB card.
+- 128K qwen-iq3s-longctx evolution on b12811 (90K unique prompt):
+  q4_0/q4_0 → 704 tok/s prefill, 12,5 tok/s gen, 13984 MiB;
+  + `kv-unified` → 701 / 14,7, 13985 MiB (+~10% gen, same VRAM);
+  current `q8_0` K / `q5_1` V → 697 / 13,9, 15393 MiB. All fit on 16 GB.
 - KV quality check (2026-11-25, IQ3_S, no MTP, temp 0): q4_0 vs q8_0 at the
   same context gave 7/8 PASS on `bench-knowledge.sh` for both (the single FAIL
   is a fixture issue: expected `du`, model used `find`), 5/8 answers
   byte-identical. 3-needle recall at 96K / 71540 tokens: all 3 needles found
-  by both, identical output. No observable quality difference; prefer q4_0 for
-  long context, q8_0 only if you have VRAM headroom and want max fidelity.
-- 128K + q8_0 (no MTP) does NOT even load: compute pp buffers (~740 MiB) cannot
-  be allocated. Max measured q8_0 context without MTP: 96K (98304).
+  by both, identical output. No observable quality difference. The 128K preset
+  nevertheless uses `q8_0` K / `q5_1` V by explicit choice for max fidelity.
+- `q8_0` for **both** K and V at 128K (b12716) did not load: compute pp buffers
+  (~740 MiB) could not be allocated; max tested was 96K. On b12811 the hybrid
+  `q8_0` K / `q5_1` V pair fits at 128K (15393 MiB).
 - Tuning from forum/field measurements (2026-11-25, source:
   https://github.com/joanmedina/qwen3-llama-cpp-inference-tuning, reproducible
   data for the same model, different hardware — relative effects transfer):
@@ -576,4 +599,7 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
       `deploy/systemd/llama16-router.service` and the GPU watchdog router-aware
       (verified 2026-11-25: helper idempotent, watchdog ignores router idle
       and unload transitions).
+- [ ] Map `kv-unified` into compose so the single-model longctx fallback can
+      match the router preset (`q8_0` K / `q5_1` V).
+- [ ] Optional: test DFlash2 on Inkling (Inkling-only, not started).
 - [ ] Decide prod host(s) and add them to the scope table.
