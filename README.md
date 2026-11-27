@@ -2,12 +2,13 @@
 
 Dockerized, OpenAI-compatible [`llama-server`](https://github.com/ggml-org/llama.cpp)
 tuned for **16 GB NVIDIA GPUs** — default target: **RTX 5060 Ti 16 GB (Blackwell,
-sm_120)** — serving **Qwen3.8-27B** (dense 27B, hybrid Gated DeltaNet / attention)
-in 3-bit GGUF quantizations.
+sm_120)** — serving two models:
+- **Qwen3.8-27B** — dense 27B, hybrid Gated DeltaNet / attention, 3-bit GGUFs;
+- **Inkling-2-Mini** — 26B MoE with looped layers, `UD-Q4_K_M`.
 
-The model is **dense**: everything runs in VRAM. There is no MoE expert offload,
-no partial layer split, no CPU fallback. If it does not fit, you lower the
-context, quantize the KV cache harder, or drop the MTP head.
+The Qwen profiles are dense: everything runs in VRAM, no expert offload.
+Inkling is MoE: non-looped experts live in host RAM while looped experts and
+all non-expert weights stay on the GPU. See [Profiles](#profiles).
 
 Forked in structure from [`noxgle/llama_6GB`](https://github.com/noxgle/llama_6GB),
 but the operating model is different — see [Not a 6 GB fork](#not-a-6-gb-fork).
@@ -37,12 +38,13 @@ but the operating model is different — see [Not a 6 GB fork](#not-a-6-gb-fork)
 | Driver | 580.x | must support CUDA 12.9 runtime |
 | Docker | 26.0+ | `deploy.resources.reservations.devices` must work |
 | NVIDIA Container Toolkit | any recent | `nvidia-ctk` |
-| Disk | ~25 GB | 12–14 GB of weights + image |
+| Disk | ~45 GB | both model sets (~25 GB) + image (10.5 GB) |
 | RAM | 24 GB, 30 GB comfortable | `--load-mode mlock` keeps the model resident |
 
-Models are not bundled. They are downloaded from
-[`unsloth/Qwen3.8-27B-GGUF`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF)
-(pinned revision) by `deploy/download-model.sh`.
+Models are not bundled. `deploy/download-model.sh` downloads pinned revisions
+of [`unsloth/Qwen3.8-27B-GGUF`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF)
+and [`unsloth/Inkling-2-Mini-GGUF`](https://huggingface.co/unsloth/Inkling-2-Mini-GGUF)
+(the latter via `--model inkling2`, using the `Mainline_Support` layout).
 
 ## Quick start
 
@@ -67,6 +69,7 @@ Manual equivalent:
 cd /opt/llama16
 bash deploy/download-model.sh --quant iq3s             # ~13.4 GB with MTP
 bash deploy/download-model.sh --quant q3kxl --no-mtp   # second preset
+bash deploy/download-model.sh --model inkling2         # Inkling Q4_K_M (~16,6 GB)
 cp configs/qwen3.8-27b-iq3s-mtp.env .env
 docker compose pull
 docker compose down && docker compose up -d            # down+up, never restart
@@ -86,7 +89,7 @@ RAM/VRAM).
 One profile = one complete `.env`. Copy it to `.env` and recreate the stack.
 For the default router deployment, use `configs/router.ini` instead.
 
-| File | Quant | MTP | Context | KV | Est. VRAM |
+| File | Quant | MTP | Context | KV | Measured VRAM |
 |---|---|---|---|---|---|
 | `configs/qwen3.8-27b-iq3s-mtp.env` (fallback) | UD-IQ3_S (11.2 GiB) | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
 | `configs/qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL (12.2 GiB) | off | 32K | q8_0 | ~14.4 GiB |
@@ -97,13 +100,17 @@ For the default router deployment, use `configs/router.ini` instead.
 the MTP draft head (another 1.28 GiB). `iq3s-longctx` trades KV precision and
 MTP for 128K of context.
 
-All profiles now use `CACHE_RAM=8192`, `CTX_CHECKPOINTS=8` and
-`REPEAT_PENALTY=1.0`. `iq3s-mtp` uses `draft-mtp,ngram-mod` and the no-MTP
-profiles use `ngram-mod` (field-tested for agent copy/edit workloads; see
-[Benchmarking](#benchmarking)).
+All profiles use `CTX_CHECKPOINTS=8` and `REPEAT_PENALTY=1.0`. Qwen profiles use
+`CACHE_RAM=8192`; `iq3s-mtp` uses `draft-mtp,ngram-mod` and the no-MTP profiles
+use `ngram-mod`. Inkling uses `CACHE_RAM=4096`, `load-mode none` (mmap),
+`REASONING_BUDGET=8192` and the message `" thinking budget exceeded, answer now."`.
 
-Fallbacks when a profile OOMs: 48K → 40K (default), 32K → 24K (q3kxl), or switch
-`CACHE_TYPE_K/V` to `q4_0`. Do **not** add MoE flags — the model has no experts.
+Acceptance targets: 16 GB VRAM, 128K context, `q8_0` KV, generation >= 20 tok/s,
+prefill >= 200 tok/s; Q4 quant preferred, Q3 acceptable. Current status is in
+`AGENTS.md` → "Project targets".
+
+Fallbacks for the **dense Qwen** profiles: 48K → 40K, 32K → 24K, or KV → `q4_0`.
+Do **not** add MoE flags to Qwen — it has no experts (Inkling is the exception).
 
 ## Router mode (experimental)
 
@@ -123,15 +130,7 @@ Start it (stop the compose stack first — both use port 8089):
 ```bash
 cd /opt/llama16
 docker compose down
-docker run -d --name llama16-router --restart unless-stopped \
-    --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all -e GGML_CUDA_GRAPH_OPT=1 \
-    -p 8089:8089 \
-    -v /opt/llama16/models:/models:ro \
-    -v /opt/llama16/configs/router.ini:/router.ini:ro \
-    ghcr.io/noxgle/llama-server-16gb:stable-b12811-v1 \
-    --models-preset /router.ini --models-max 1 --models-memory-margin 512 \
-    --host 0.0.0.0 --port 8089 --alias router --jinja --threads-http 2 --fit off \
-    --metrics
+bash deploy/start-router.sh        # idempotent; image + flags pinned in the script
 ```
 
 Use it:
@@ -185,8 +184,10 @@ VRAM = weights + optional MTP head + KV cache + ~0.15 GiB recurrent state +
 ~0.9 GiB CUDA context/compute buffers. Usable VRAM on a 16311 MiB card is
 ~15.9 GiB, not 16.
 
-KV is allocated **only for the 16 full-attention layers** — the 48 Gated DeltaNet
-layers keep a fixed-size recurrent state (~150 MiB total, independent of context):
+For Qwen, KV is allocated **only for the 16 full-attention layers** — the 48
+Gated DeltaNet layers keep a fixed-size recurrent state (~150 MiB, independent
+of context). Inkling uses sliding-window + looped attention instead; its KV is
+smaller than the table suggests:
 
 | KV precision | Bytes/token | 32K | 64K | 128K |
 |---|---|---|---|---|
@@ -210,9 +211,11 @@ reachable at all on a 16 GB card.
 ./llama.sh start q38           # IQ3_S + MTP, 48K
 ./llama.sh start q38-q3kxl     # Q3_K_XL, 32K
 ./llama.sh start q38-long      # IQ3_S, 128K
+./llama.sh start inkling2      # Inkling Q4_K_M, MoE, 128K
 ./llama.sh status | stop | logs q38 | health
 
-# API — router mode: "model" selects the preset (iq3s-mtp | q3kxl | longctx)
+# API — router mode: "model" selects one of six presets:
+# iq3s-mtp | q3kxl | longctx | inkling2-mini | inkling2-mini-balanced | inkling2-mini-dspark
 curl -s localhost:8089/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}' \
@@ -325,10 +328,11 @@ the GPU. On Docker 26.x use the compose `deploy.resources.reservations.devices`
 block; `--gpus all` can degrade to CPU-serialized CUDA JIT.
 
 **OOM at model load** — check the profile's estimated VRAM, lower `CTX`, switch
-KV to `q4_0`, or disable MTP. For Inkling: keep `BATCH/UBATCH <= 32` (256 needs
-a ~13 GiB compute buffer) and download `Mainline_Support/*.gguf_file` renamed
-to `.gguf` — the root GGUF is rejected by mainline llama.cpp. `--fit off` is intentional: it must fail loudly
-instead of silently shrinking the context.
+KV to `q4_0`, or disable MTP. For Inkling: `UBATCH=256` works only with
+`MOE_CACHE_MIB=0` (with a 1,5 GiB cache the compute buffer OOMs); download
+`Mainline_Support/*.gguf_file` renamed to `.gguf` — the root GGUF is rejected by
+mainline llama.cpp. `--fit off` is intentional: it fails loudly instead of
+silently shrinking the context.
 
 **`common_download_get_hf_plan: no GGUF files found`** — you used `-hf`. The MTP
 head lives in `MTP/` and the HF planner does not recurse; use
@@ -337,8 +341,10 @@ head lives in `MTP/` and the HF planner does not recurse; use
 **Empty responses** — Qwen3.8 defaults to `reasoning_effort=xhigh`; with a low
 `max_tokens` the budget is consumed by thinking. Raise `N_PREDICT`/`max_tokens`,
 set `REASONING_EFFORT=medium` in `.env` (single model) or `reasoning_effort` in
-`configs/router.ini` (router). Valid values are `xhigh`, `medium`, `low` —
-`high` returns HTTP 500.
+`configs/router.ini` (router). Valid Qwen values are `xhigh`, `medium`, `low` —
+`high` returns HTTP 500. Inkling uses a different scale (`none|minimal|low|medium|
+high|xhigh|max` or 0–0.99) and a hard `REASONING_BUDGET=8192`; allow more than
+8192 `max_tokens` for hard tasks, otherwise the answer is cut off.
 
 **`.env` changes have no effect** — `docker compose restart` does not re-read
 `.env`. Use `down && up -d`.
@@ -347,12 +353,12 @@ set `REASONING_EFFORT=medium` in `.env` (single model) or `reasoning_effort` in
 
 | | llama_6GB | llama_16GB |
 |---|---|---|
-| Model | MoE (35B A3B) | dense 27B |
-| Strategy | experts on CPU, attention on GPU (`-ot exps=CPU`) | everything in VRAM |
+| Model | MoE (35B A3B) | dense Qwen 27B / MoE Inkling 26B |
+| Strategy | experts on CPU, attention on GPU (`-ot exps=CPU`) | Qwen: all in VRAM; Inkling: selective `-ot` experts in RAM |
 | KV cache | full attention, all layers | 16 attention layers only (DeltaNet is recurrent) |
 | CUDA | 12.4, sm_89/PTX | 12.9, sm_120 |
 | Model source | `-hf` | local GGUFs (`-m`), because MTP lives in a subdirectory |
-| Context | 8–32K | 48K default, 128K profile |
+| Context | 8–32K | 48K Qwen default, 128K Inkling default |
 
 Carrying over 6 GB flags (`CPUMOE`, `-ot exps=CPU`, `--n-cpu-moe`) silently
 produces a broken configuration on a dense model.
