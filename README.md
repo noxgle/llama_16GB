@@ -91,7 +91,7 @@ For the default router deployment, use `configs/router.ini` instead.
 | `configs/qwen3.8-27b-iq3s-mtp.env` (fallback) | UD-IQ3_S (11.2 GiB) | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
 | `configs/qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL (12.2 GiB) | off | 32K | q8_0 | ~14.4 GiB |
 | `configs/qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S (11.2 GiB) | off | 128K | q4_0 | ~14.6 GiB |
-| `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q4_0 | 11726 MiB |
+| `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q8_0 | 12800 MiB |
 
 `UD-Q3_K_XL` is the quality option: it is ~1 GiB larger and leaves no room for
 the MTP draft head (another 1.28 GiB). `iq3s-longctx` trades KV precision and
@@ -284,9 +284,9 @@ copy/edit prompts, 2026-11-25):
 | `iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
 | `iq3s-mtp-base` (MTP only, A/B baseline) | 63.3 / 63.1 | 798/801, 797/803 |
 
-Inkling-2-Mini (`inkling2-mini`, q4_0 KV, 8 GiB expert cache, batch 32):
-gen **15,7 tok/s** (short) / **17,4 tok/s** (repeat workload), prefill ~15 tok/s,
-VRAM **11726 MiB**, RAM free 14/30 GB.
+Inkling-2-Mini (`inkling2-mini`, q8_0 KV, 8 GiB expert cache, batch 32):
+gen **15,0 tok/s** (short) / **16,1 tok/s** (~1,7K prompt), prefill **17,1 tok/s**,
+VRAM **12800 MiB**, RAM free 14/30 GB. q4_0 KV used 11726 MiB — q8 costs ~1 GiB.
 Batch 1024 is not feasible: compute buffer alone needs ~25,7 GiB; batch 128
 needs ~9,9 GiB and only fits with a 2 GiB expert cache (prefill 53,7 tok/s but
 gen drops to 6,5 tok/s). Presets `inkling2-mini-b64` / `-b128` keep the working

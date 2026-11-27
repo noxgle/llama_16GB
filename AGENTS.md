@@ -149,7 +149,7 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Build requirement: ≥ b12611 (PR #32704 per-expert NVFP4 scales) and #32807
   (host-expert copy corruption). b12716 includes both.
 - Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary)
-  and `inkling2-mini-noop` (fallback). `CTX=131072`, `q4_0` KV,
+  and `inkling2-mini-noop` (fallback). `CTX=131072`, `q8_0` KV,
   `BATCH/UBATCH=32`, `-cmoe`, 8 GiB `--moe-cache-mib`, CPU share 0.0,
   sampling temp 1.0 / top-p 1.0 / top-k 0 / min-p 0.
 - Keep host-tensor op offload **on** but batch small: with `BATCH=256` the
@@ -159,8 +159,10 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
-- Measured on RTX 5060 Ti: VRAM **11726 MiB**, RAM free 14/30 GB, gen
-  **15,7 tok/s** (short) / **17,4 tok/s** (repeat workload), prefill ~15 tok/s.
+- Measured on RTX 5060 Ti with `q8_0` KV: VRAM **12800–12826 MiB**, RAM free
+  14/30 GB, gen **15,0 tok/s** (short) / **16,1 tok/s** (~1,7K prompt), prefill
+  **17,1 tok/s**. With `q4_0` KV VRAM was 11726 MiB — q8 costs ~1 GiB here
+  (banded/sliding-window KV) and no measurable speed penalty.
   Repro #32807 (repeat sentence ×20) produced no gibberish.
   **Caveat:** at ~15 tok/s prefill, a full 128K prompt would take hours; the
   context is allocated and valid, but practical prompts are much shorter.
@@ -168,7 +170,7 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 
   | batch/ubatch | cache | prefill tok/s | gen tok/s | VRAM |
   |---|---|---|---|---|
-  | 32 | 8192 (primary) | ~15 | 15,7–17,4 | 11726 MiB |
+  | 32 | 8192 (primary, q8_0 KV) | 17,1 | 15,0–16,1 | 12800 MiB |
   | 64 | 4096 | 28,4 | 9,3 | 15189 MiB |
   | 128 | 2048 | 53,7 | 6,5 | 14725 MiB |
   | 128 | 4096 | OOM (9,9 GiB compute buffer) | — | — |
