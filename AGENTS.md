@@ -34,7 +34,7 @@ Every serving profile is expected to meet these on the dev box:
 |---|---|
 | GPU | 16 GB VRAM class (RTX 5060 Ti 16 GB, ~15,9 GiB usable) |
 | Context | **131072 tokens** per slot |
-| KV cache | **`q8_0`** for both K and V |
+| KV cache | **`q8_0`** for both K and V; a lower type (e.g. `q4_0`) is acceptable as a **measured, documented exception** when `q8_0` cannot fit the target context on 16 GB |
 | Generation | **>= 20 tok/s** (measured) |
 | Prefill | **>= 200 tok/s** (measured, unique prompts, no prefix-cache reuse) |
 | Weight quant | prefer **Q4 or higher** (Q4_K_M, Q4_K_XL); **Q3 is acceptable** (Q3_K_XL, IQ3_S, IQ3_XXS) when Q4 cannot fit the VRAM/throughput budget |
@@ -48,10 +48,12 @@ Status on 2026-11-27 (all numbers measured, not estimated):
 | `q3kxl` | 32768 | q8_0 | 29 | ~907 | Q3_K_XL | ctx < 128K |
 | `iq3s-longctx` | 131072 | q4_0 | 19,4 | 881 | IQ3_S | KV q4_0, gen < 20 |
 
-Only the Inkling profile currently satisfies all targets. On Qwen3.8-27B a
-128K context with `q8_0` KV OOMs on a 16 GB card (measured), so `iq3s-longctx`
-uses `q4_0` and is explicitly an exception. Before changing a profile, check
-it against this table and update the "Meets targets?" column with new numbers.
+Only the Inkling profile currently satisfies all targets. Lower KV precision
+is allowed case-by-case: on Qwen3.8-27B a 128K context with `q8_0` KV OOMs on a
+16 GB card (measured), so `iq3s-longctx` uses `q4_0`. Every such exception must
+be justified with measured VRAM/quality numbers and recorded in the table.
+Before changing a profile, check it against this table and update the
+"Meets targets?" column with new numbers.
 
 ## Hardware and hosts
 
