@@ -113,10 +113,10 @@ request is dispatched by its `model` field; the router starts and stops child
 `llama-server` processes on demand. **Docker is not restarted** — only the
 child processes come and go.
 
-`configs/router.ini` defines: `iq3s-mtp` (48K + MTP, tuned), `q3kxl` (32K),
-`longctx` (128K, q4_0 KV), `iq3s-mtp-base` (pre-tuning A/B baseline), plus
-`inkling2-mini` (MoE, 128K, selective CPU experts — primary),
-`inkling2-mini-cmoe`, `inkling2-mini-noop`, `-b64`, `-b128`.
+`configs/router.ini` defines six presets: `iq3s-mtp` (48K + MTP, tuned),
+`q3kxl` (32K), `longctx` (128K, q4_0 KV), `inkling2-mini` (MoE, 128K, q8_0,
+selective CPU experts — primary), `inkling2-mini-balanced` and
+`inkling2-mini-dspark`.
 
 Start it (stop the compose stack first — both use port 8089):
 
@@ -234,14 +234,14 @@ Systemd units (installed with `install-llama.sh --with-systemd`):
 
 Most scripts run **on the server** and recreate the compose stack; they refuse
 to run when the model is not on the GPU. `tune-ab.sh` is the exception: it needs
-router mode and the `iq3s-mtp` / `iq3s-mtp-base` presets.
+router mode and the `iq3s-mtp` preset.
 
 ```bash
 ./benchmark/bench-vram.sh                     # ctx sweep: VRAM peak, prefill, gen
 ./benchmark/bench-mtp-sweep.sh                # SPEC_DRAFT_N_MAX 0..4, acceptance rate
 ./benchmark/bench-batch.sh                    # BATCH/UBATCH prefill sweep
 ./benchmark/bench-knowledge.sh                # small deterministic quality suite
-./benchmark/tune-ab.sh                        # router A/B: tuned vs iq3s-mtp-base
+./benchmark/tune-ab.sh                        # router copy/edit + cache test (iq3s-mtp)
 ```
 
 Raw CSVs/Markdown land in `benchmark/` (gitignored except for the scripts).
@@ -283,13 +283,8 @@ copy/edit prompts, 2026-11-25):
 | Preset | gen tok/s (copy 1 / 2) | draft accepted |
 |---|---|---|
 | `iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
-| `iq3s-mtp-base` (MTP only, A/B baseline) | 63.3 / 63.1 | 798/801, 797/803 |
+| MTP only (old baseline, preset removed) | 63.3 / 63.1 | 798/801, 797/803 |
 
-Inkling-2-Mini (`inkling2-mini`, q8_0 KV, selective `-ot` for non-looped
-experts, 1,5 GiB cache, batch 1024/ubatch 32): gen **30,4–32,8 tok/s**,
-prefill **68,9 tok/s** (8K prompt), VRAM **14872 MiB**, RAM free 23/30 GB.
-The all-CPU-expert variant (`inkling2-mini-cmoe`, 8 GiB cache) gives 15–17 tok/s
-and 12800 MiB — kept as fallback.
 DSpark on b12811 is available as optional preset `inkling2-mini-dspark`
 (drafter: `Mainline_Support/dspark-Inkling-2-Mini-Q8_0.gguf_file` -> `.gguf`):
 repeated-text gen 40,8 tok/s (accept 206/276) vs 35,8 without, but no gain on
@@ -299,24 +294,16 @@ Qwen (60,1 tok/s). `n_max=2` was slower than 3.
 DEFAULT `inkling2-mini` keeps 128K + q8_0 KV and reaches **249–255 tok/s
 prefill** with gen 29–32 tok/s (ubatch 256, MoE cache off, VRAM 13442 MiB;
 verified with a 39,6K prompt). `inkling2-mini-balanced` gives 138 tok/s prefill
-with gen 33 and an active expert cache; `inkling2-mini-safe` is the old
-69 tok/s / 33 tok/s configuration.
+with gen 33 and an active expert cache.
 
-Prefill tuning: `inkling2-mini-fastpp128` (128K, q4_0 KV, ubatch 128) gives
-138,7 tok/s vs 69 on the q8_0/ubatch-32 primary, with unchanged gen (~33 tok/s)
-and lower VRAM (13807 MiB). `inkling2-mini-fastpp` (48K, q4_0, ubatch 256) goes
-to 248–252 tok/s gen 33,1, VRAM 12993 MiB — verified with a 39,6K prompt.
+Prefill experiments with q4_0 KV or 48K context reached 138–252 tok/s, but
+were removed from `router.ini` after the primary reached 249–255 tok/s while
+keeping 128K + q8_0.
 
-Prefill on b12811 (`stable-b12811-v1`, unique prompts): Inkling 69–80 tok/s
-(219–1682 tokens), DSpark essentially identical (66–69 tok/s), Qwen 898,8 tok/s
-at 20K tokens — no regression vs 907 tok/s on b12716.
-
-UBatch 128 OOMs at load (3,4 GiB compute buffer); ubatch 64 loads at 15841 MiB
-but crashes on a ~1,7K prompt. The primary `UBATCH=32` was re-verified with an
-8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen, 14895 MiB VRAM. Batch 1024 is
-not feasible at all: compute buffer alone needs ~25,7 GiB. `inkling2-mini-noop` (op-offload off,
-batch 256) gives 9,7 tok/s and 13300 MiB — kept as fallback only. A full 128K
-prompt is allocated but would take hours to prefill at ~15 tok/s.
+UBatch 256 needs the MoE cache off; with 1,5 GiB cache it OOMs at load
+(~13 GiB compute buffer). Batch 1024 is not feasible at all: compute buffer
+alone needs ~25,7 GiB. A full 128K prompt is allocated but still takes ~7 min
+to prefill at ~250 tok/s.
 
 A 39K-token chat followed by a foreign request returned with 39065 cached
 tokens in ~2 s on **both** cache settings; the 8192/8 benefit is expected on

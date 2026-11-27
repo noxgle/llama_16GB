@@ -154,9 +154,9 @@ Single-model compose profiles (fallback path):
 | `qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL | off | 32K | q8_0 | ~13340 MiB |
 | `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | 13992 MiB |
 
-**Default deployment = router mode** with the same three configurations as
-presets in `configs/router.ini`: `iq3s-mtp` (default), `q3kxl`, `longctx`, plus `inkling2-mini` /
-`inkling2-mini-noop` for the second model.
+**Default deployment = router mode** with six presets in `configs/router.ini`:
+Qwen `iq3s-mtp` (default), `q3kxl`, `longctx`; Inkling `inkling2-mini` (primary),
+`inkling2-mini-balanced`, `inkling2-mini-dspark`.
 Select with the `model` field of `/v1/chat/completions`; only one preset is
 resident at a time. See README → "Router mode (experimental)" for the exact
 `docker run` command and the switch-back procedure.
@@ -178,7 +178,7 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Build requirement: ≥ b12611 (PR #32704 per-expert NVFP4 scales) and #32807
   (host-expert copy corruption). b12811 includes both.
 - Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary,
-  community recipe), `inkling2-mini-cmoe`, `inkling2-mini-noop`, `-b64`, `-b128`.
+  community recipe), `inkling2-mini-balanced`, `inkling2-mini-dspark`.
   `CTX=131072`, `q8_0` KV, `BATCH=1024`/**`UBATCH=256`**, `load-mode none` (mmap),
   `--override-tensor 'blk\.(0|1|2|3|20|21|22|23)\.ffn_.*_exps.*=CPU'` (only
   non-looped experts in RAM; looped experts stay on GPU), `--moe-cache-mib 0`
@@ -203,24 +203,25 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Measured on RTX 5060 Ti with the PRIMARY recipe (128K, q8_0, ubatch 256,
   no MoE cache): VRAM **13442 MiB**, RAM free 23/30 GB, prefill **254,8 tok/s**
   on 22K tokens and **248,9 tok/s** on 39,6K tokens, gen **28,9–31,9 tok/s**.
-  Repro #32807 clean, health OK. No gen sacrifice was needed. The conservative
-  `inkling2-mini-safe` (ubatch 32 + 1,5 GiB cache) gives 69 tok/s prefill /
-  33 tok/s gen / 14,6 GiB.
+  Repro #32807 clean, health OK. No gen sacrifice was needed. The balanced
+  preset (ubatch 128 + 1,5 GiB cache) gives 138 tok/s prefill / 33 tok/s gen /
+  14,9 GiB.
   Repro #32807 (repeat sentence ×20) produced no gibberish.
   **Caveat:** even at ~250 tok/s prefill, a full 128K prompt still takes ~7 min;
   the context is allocated and valid, but practical prompts are shorter.
-- Batch trade-off measured on this box (op-offload on unless noted, cache in MiB):
+- Batch trade-off measured on this box (selective `-ot`, b12811):
 
-  | batch/ubatch | cache | prefill tok/s | gen tok/s | VRAM |
+  | ubatch | MoE cache | prefill tok/s | gen tok/s | VRAM |
   |---|---|---|---|---|
-  | 32, selective -ot, cache 1536 (primary) | 1536 | 68,9 | 30,4–32,8 | 14872 MiB |
-  | 64, selective -ot, cache 1536 | 1536 | — (OOM at ~1,7K prompt) | 31,0 (short) | 15841 MiB |
-  | 128, selective -ot, cache 1536 | 1536 | OOM at load (3,4 GiB compute buffer) | — | — |
-  | 32, -cmoe, cache 8192 | 8192 | 17,1 | 15,0–16,1 | 12800 MiB |
-  | 64, -cmoe | 4096 | 28,4 | 9,3 | 15189 MiB |
-  | 128, -cmoe | 2048 | 53,7 | 6,5 | 14725 MiB |
-  | 128 | 4096 | OOM (9,9 GiB compute buffer) | — | — |
-  | 1024 | 4096 (op-offload off) | OOM (25,7 GiB compute buffer) | — | — |
+  | 256 (primary) | 0 | 249–255 | 29–32 | 13442 MiB |
+  | 128 (balanced) | 1536 | 138 | 33 | 14883 MiB |
+  | 32 (old baseline) | 1536 | 69 | 33 | 14600 MiB |
+  | 256 with cache 1536 | 1536 | OOM at load (~13 GiB compute buffer) | — | — |
+  | 1024 | any | OOM at load (~25,7 GiB compute buffer) | — | — |
+
+  The lever is `ubatch` — CPU-offloaded MoE experts are copied per micro-batch.
+  Experimental `-cmoe` variants (cache 0–8192, ubatch 32–256) were removed from
+  `router.ini` after the selective recipe proved faster and more stable.
 
 - Prefill measured on b12811 (unique prompts, no prefix-cache reuse):
 
@@ -237,24 +238,14 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 
   | preset | ctx | KV | ubatch | prefill tok/s | gen tok/s | VRAM |
   |---|---|---|---|---|---|---|
-  | `inkling2-mini` (primary) | 131072 | q8_0 | **256** | **248,9–254,8** | 28,9–31,9 | 13442 MiB |
+  | `inkling2-mini` (primary) | 131072 | q8_0 | 256 | 248,9–254,8 | 28,9–31,9 | 13442 MiB |
   | `inkling2-mini-balanced` | 131072 | q8_0 | 128 | 138,2 | 33,0 | 14883 MiB |
-  | `inkling2-mini-safe` | 131072 | q8_0 | 32 | 69 | 33 | 14600 MiB |
-  | `inkling2-mini-fastpp128` | 131072 | q4_0 | 128 | 138,7 | 33,0 | 13807 MiB |
-  | `inkling2-mini-fastpp` | 49152 | q4_0 | 256 | **248,8–252,1** | 33,1 | 12993 MiB |
-  | `inkling2-mini-fastpp` | 49152 | q4_0 | 128 | 138,7 | 32,7 | 12959 MiB |
+  | `inkling2-mini-dspark` | 131072 | q8_0 | 32 | 66–69 | 34–41 | 15764 MiB |
 
-  The lever is `ubatch` (CPU-offloaded MoE experts are copied per micro-batch),
-  not context. `q4_0` KV frees ~1 GiB and `ctx=49152` frees more, allowing a
-  larger ubatch. **No gen sacrifice was needed** — gen stays ~33 tok/s in all
-  variants, so the user-proposed 20–25 tok/s trade was not necessary.
-  `ubatch=256` at 128K still OOMs; 48K/256 survived a 39,6K-token prompt.
+  The lever is `ubatch`; q4_0 KV / 48K experiments were dropped from
+  `router.ini` once the primary reached the same prefill with q8_0/128K.
+  No gen sacrifice was needed.
 
-  Presets `inkling2-mini-b64` / `inkling2-mini-b128` are the older `-cmoe`
-  variants; for the primary selective recipe `UBATCH=32` is the only stable
-  value (verified again with an 8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen,
-  14895 MiB). Batch 1024 is **not possible** on 16 GB — the compute buffer
-  scales with ubatch, not with context.
 
 ## Repository layout (target)
 
@@ -522,8 +513,8 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
     same result (39065 cached tokens, ~2 s), so the benefit is for 65K+ chats
     and 128K profiles — not yet measured here. 30 GB host RAM has 28 GB free
     after the change.
-  - A/B harness: `benchmark/tune-ab.sh` with the `iq3s-mtp-base` preset in
-    `configs/router.ini` (old settings, for comparison only).
+  - A/B harness: `benchmark/tune-ab.sh` measures the current `iq3s-mtp`
+    preset (the old baseline preset was removed from `router.ini`).
 
 ## Upstream issues to watch
 

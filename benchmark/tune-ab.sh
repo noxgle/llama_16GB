@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # A/B verification: tuned vs baseline preset (router mode).
-# Requires `iq3s-mtp` (draft-mtp,ngram-mod + cache-ram 8192 + 8 checkpoints)
-# and `iq3s-mtp-base` (draft-mtp + cache-ram 4096 + 4 checkpoints) in router.ini.
+# Requires the `iq3s-mtp` preset (draft-mtp,ngram-mod + cache-ram 8192 +
+# 8 checkpoints) in router.ini. Measures copy/edit and prompt-cache return.
 #
 # Part A: two copy/edit workloads (long source file reproduced with one change).
 # Part B: 39K-token chat -> foreign request -> return; reports prompt_n/cached_tokens.
@@ -55,7 +55,7 @@ for n, seed in enumerate(("alpha", "bravo")):
 print("copy payloads ready")
 PY
 
-for model in iq3s-mtp iq3s-mtp-base; do
+for model in iq3s-mtp; do
     for n in 0 1; do
         sed "s/PLACEHOLDER/$model/" "/tmp/tune-copy-$n.json" > "/tmp/tune-copy-$model-$n.json"
         ask "$model" "/tmp/tune-copy-$model-$n.json" "copy-$model-$n"
@@ -79,7 +79,7 @@ json.dump({"model": "PLACEHOLDER", "messages": [{"role": "user", "content": "Wha
 print("long prompt chars:", len(prompt))
 PY
 
-for model in iq3s-mtp iq3s-mtp-base; do
+for model in iq3s-mtp; do
     sed "s/PLACEHOLDER/$model/" /tmp/tune-long.json > "/tmp/tune-long-$model.json"
     sed "s/PLACEHOLDER/$model/" /tmp/tune-foreign.json > "/tmp/tune-foreign-$model.json"
     ask "$model" "/tmp/tune-long-$model.json" "long-$model"
