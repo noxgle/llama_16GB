@@ -149,7 +149,7 @@ Single-model compose profiles (fallback path):
 
 | Profile | Quant | MTP | CTX | KV | Measured VRAM |
 |---|---|---|---|---|---|
-| `inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE) | off | 128K | q4_0 | 11726 MiB |
+| `inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE) | off | 128K | q8_0 | 13442 MiB |
 | `qwen3.8-27b-iq3s-mtp.env` | UD-IQ3_S | `n_max=2` | 48K | q8_0 | 14424 MiB |
 | `qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL | off | 32K | q8_0 | ~13340 MiB |
 | `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | 13992 MiB |
@@ -200,6 +200,13 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
+- `configs/inkling-2-mini.env` and all Inkling router presets set
+  `REASONING_BUDGET_MESSAGE=" thinking budget exceeded, answer now."`
+  (compose maps it to `LLAMA_ARG_THINK_BUDGET_MESSAGE`; router presets use the
+  `reasoning-budget-message` key with two spaces after `=` so the value keeps
+  its leading space). It only appears when a thinking-budget cap is active
+  (`REASONING_BUDGET >= 0`); current value `-1` means unlimited, so it is
+  configured but dormant.
 - Measured on RTX 5060 Ti with the PRIMARY recipe (128K, q8_0, ubatch 256,
   no MoE cache): VRAM **13442 MiB**, RAM free 23/30 GB, prefill **254,8 tok/s**
   on 22K tokens and **248,9 tok/s** on 39,6K tokens, gen **28,9–31,9 tok/s**.
@@ -393,8 +400,8 @@ and counts against the 30 GB host RAM budget, not VRAM.
 
 ### RAM budget on the dev box is 30 GB total
 
-`--load-mode mlock` pins the 12–13 GB model in RAM; add `CACHE_RAM=4096`,
-checkpoints and page cache. Do not raise `CACHE_RAM` or `CTX_CHECKPOINTS`
+`--load-mode mlock` pins the 12–13 GB model in RAM; add `CACHE_RAM=8192`
+(Qwen profiles; Inkling uses 4096), checkpoints and page cache. Do not raise `CACHE_RAM` or `CTX_CHECKPOINTS`
 without checking `free -g` on the host afterwards.
 
 ### Qwen3.8 thinking control
