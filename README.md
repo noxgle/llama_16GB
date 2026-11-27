@@ -286,7 +286,11 @@ copy/edit prompts, 2026-11-25):
 
 Inkling-2-Mini (`inkling2-mini`, q4_0 KV, 8 GiB expert cache, batch 32):
 gen **15,7 tok/s** (short) / **17,4 tok/s** (repeat workload), prefill ~15 tok/s,
-VRAM **11726 MiB**, RAM free 14/30 GB. `inkling2-mini-noop` (op-offload off,
+VRAM **11726 MiB**, RAM free 14/30 GB.
+Batch 1024 is not feasible: compute buffer alone needs ~25,7 GiB; batch 128
+needs ~9,9 GiB and only fits with a 2 GiB expert cache (prefill 53,7 tok/s but
+gen drops to 6,5 tok/s). Presets `inkling2-mini-b64` / `-b128` keep the working
+middle variants. `inkling2-mini-noop` (op-offload off,
 batch 256) gives 9,7 tok/s and 13300 MiB — kept as fallback only. A full 128K
 prompt is allocated but would take hours to prefill at ~15 tok/s.
 

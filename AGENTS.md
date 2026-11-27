@@ -164,6 +164,19 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   Repro #32807 (repeat sentence ×20) produced no gibberish.
   **Caveat:** at ~15 tok/s prefill, a full 128K prompt would take hours; the
   context is allocated and valid, but practical prompts are much shorter.
+- Batch trade-off measured on this box (op-offload on unless noted, cache in MiB):
+
+  | batch/ubatch | cache | prefill tok/s | gen tok/s | VRAM |
+  |---|---|---|---|---|
+  | 32 | 8192 (primary) | ~15 | 15,7–17,4 | 11726 MiB |
+  | 64 | 4096 | 28,4 | 9,3 | 15189 MiB |
+  | 128 | 2048 | 53,7 | 6,5 | 14725 MiB |
+  | 128 | 4096 | OOM (9,9 GiB compute buffer) | — | — |
+  | 1024 | 4096 (op-offload off) | OOM (25,7 GiB compute buffer) | — | — |
+
+  Presets `inkling2-mini-b64` / `inkling2-mini-b128` keep the working variants;
+  batch 1024 is **not possible** on 16 GB — the compute buffer scales with
+  ubatch, not with context.
 
 ## Repository layout (target)
 
