@@ -202,6 +202,21 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   DSpark does not slow prefill; it only adds VRAM. b12716 Qwen at ~15K tokens
   was 907 tok/s — no regression from the pin bump.
 
+- Prefill tuning experiments (b12811, Q4_K_M, selective `-ot`):
+
+  | preset | ctx | KV | ubatch | prefill tok/s | gen tok/s | VRAM |
+  |---|---|---|---|---|---|---|
+  | `inkling2-mini` (primary) | 131072 | q8_0 | 32 | 69 | 33 | 14600 MiB |
+  | `inkling2-mini-fastpp128` | 131072 | q4_0 | 128 | **138,7** | 33,0 | 13807 MiB |
+  | `inkling2-mini-fastpp` | 49152 | q4_0 | 256 | **248,8–252,1** | 33,1 | 12993 MiB |
+  | `inkling2-mini-fastpp` | 49152 | q4_0 | 128 | 138,7 | 32,7 | 12959 MiB |
+
+  The lever is `ubatch` (CPU-offloaded MoE experts are copied per micro-batch),
+  not context. `q4_0` KV frees ~1 GiB and `ctx=49152` frees more, allowing a
+  larger ubatch. **No gen sacrifice was needed** — gen stays ~33 tok/s in all
+  variants, so the user-proposed 20–25 tok/s trade was not necessary.
+  `ubatch=256` at 128K still OOMs; 48K/256 survived a 39,6K-token prompt.
+
   Presets `inkling2-mini-b64` / `inkling2-mini-b128` are the older `-cmoe`
   variants; for the primary selective recipe `UBATCH=32` is the only stable
   value (verified again with an 8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen,
