@@ -158,7 +158,12 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Keep host-tensor op offload **on** but `UBATCH<=32`: at 256 the compute
   buffer alone wants ~13 GiB (6,5 GiB even with selective `-ot`) and OOMs at
   128K. `--no-op-offload` works too but is much slower.
-- No DSpark on b12716 (PR #32218 not merged), no MTP head → `spec-type none`.
+- DSpark: PR #32218 was merged 24 Nov and b12716 **has** `draft-dspark`, but
+  every drafter published by Unsloth so far (21 Nov) fails to load:
+  `joint_proj.weight expected 2816x768, got 5120x768`. Tested the mainline
+  Q8_0/BF16-mainline files and the root Q8_0 file — all three fail. No MTP head,
+  so `spec-type none` remains. Unsloth claims DSpark adds ~1,11–1,24x decode,
+  but it needs updated drafter GGUFs; watch their HF repo.
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
