@@ -95,6 +95,9 @@ start() {
     if [[ -n "${CPU_MOE_FLAG:-}" ]]; then
         args+=("$CPU_MOE_FLAG")
     fi
+    if [[ -n "${OT_VALUE:-}" ]]; then
+        args+=(--override-tensor "$OT_VALUE")
+    fi
     if [[ -n "${OP_OFFLOAD_FLAG:-}" ]]; then
         args+=("$OP_OFFLOAD_FLAG")
     fi

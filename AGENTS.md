@@ -148,21 +148,25 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   `deploy/download-model.sh --model inkling2` handles repo/pin/rename.
 - Build requirement: ≥ b12611 (PR #32704 per-expert NVFP4 scales) and #32807
   (host-expert copy corruption). b12716 includes both.
-- Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary)
-  and `inkling2-mini-noop` (fallback). `CTX=131072`, `q8_0` KV,
-  `BATCH/UBATCH=32`, `-cmoe`, 8 GiB `--moe-cache-mib`, CPU share 0.0,
-  sampling temp 1.0 / top-p 1.0 / top-k 0 / min-p 0.
-- Keep host-tensor op offload **on** but batch small: with `BATCH=256` the
-  compute buffer alone wants ~13 GiB and OOMs. `--no-op-offload` works too
-  (13,3 GiB VRAM, gen 9,7 tok/s) but is slower than the small-batch variant.
+- Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary,
+  community recipe), `inkling2-mini-cmoe`, `inkling2-mini-noop`, `-b64`, `-b128`.
+  `CTX=131072`, `q8_0` KV, `BATCH=1024`/`UBATCH=32`, `load-mode none` (mmap),
+  `--override-tensor 'blk\.(0|1|2|3|20|21|22|23)\.ffn_.*_exps.*=CPU'` (only
+  non-looped experts in RAM; looped experts stay on GPU), 1,5 GiB
+  `--moe-cache-mib`, CPU share 0.0, sampling temp 1.0 / top-p 1.0 / top-k 0 /
+  min-p 0. This was adapted from a community config found online.
+- Keep host-tensor op offload **on** but `UBATCH<=32`: at 256 the compute
+  buffer alone wants ~13 GiB (6,5 GiB even with selective `-ot`) and OOMs at
+  128K. `--no-op-offload` works too but is much slower.
 - No DSpark on b12716 (PR #32218 not merged), no MTP head → `spec-type none`.
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
-- Measured on RTX 5060 Ti with `q8_0` KV: VRAM **12800–12826 MiB**, RAM free
-  14/30 GB, gen **15,0 tok/s** (short) / **16,1 tok/s** (~1,7K prompt), prefill
-  **17,1 tok/s**. With `q4_0` KV VRAM was 11726 MiB — q8 costs ~1 GiB here
-  (banded/sliding-window KV) and no measurable speed penalty.
+- Measured on RTX 5060 Ti with the primary selective recipe and `q8_0` KV:
+  VRAM **14872–14894 MiB**, RAM free **23/30 GB** (mmap not mlock), gen
+  **30,4–32,8 tok/s**, prefill **68,9 tok/s** on an 8K prompt. Repro #32807
+  clean. Headroom is only ~1 GiB — do not raise ubatch/cache.
+  The older all-CPU-expert (`-cmoe`) variant used 12800 MiB and 15–17 tok/s.
   Repro #32807 (repeat sentence ×20) produced no gibberish.
   **Caveat:** at ~15 tok/s prefill, a full 128K prompt would take hours; the
   context is allocated and valid, but practical prompts are much shorter.
@@ -170,9 +174,10 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 
   | batch/ubatch | cache | prefill tok/s | gen tok/s | VRAM |
   |---|---|---|---|---|
-  | 32 | 8192 (primary, q8_0 KV) | 17,1 | 15,0–16,1 | 12800 MiB |
-  | 64 | 4096 | 28,4 | 9,3 | 15189 MiB |
-  | 128 | 2048 | 53,7 | 6,5 | 14725 MiB |
+  | 32, selective -ot, cache 1536 (primary) | 1536 | 68,9 | 30,4–32,8 | 14872 MiB |
+  | 32, -cmoe, cache 8192 | 8192 | 17,1 | 15,0–16,1 | 12800 MiB |
+  | 64, -cmoe | 4096 | 28,4 | 9,3 | 15189 MiB |
+  | 128, -cmoe | 2048 | 53,7 | 6,5 | 14725 MiB |
   | 128 | 4096 | OOM (9,9 GiB compute buffer) | — | — |
   | 1024 | 4096 (op-offload off) | OOM (25,7 GiB compute buffer) | — | — |
 
