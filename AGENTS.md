@@ -155,9 +155,10 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   non-looped experts in RAM; looped experts stay on GPU), `--moe-cache-mib 0`
   (VRAM freed for the larger ubatch), CPU share 0.0, sampling temp 1.0 /
   top-p 1.0 / top-k 0 / min-p 0. Adapted from a community config found online.
-- Keep host-tensor op offload **on** but `UBATCH<=32`: at 256 the compute
-  buffer alone wants ~13 GiB (6,5 GiB even with selective `-ot`) and OOMs at
-  128K. `--no-op-offload` works too but is much slower.
+- Keep host-tensor op offload **on**. `UBATCH=256` works at 128K q8_0 KV only
+  because the MoE cache is off (0 MiB) — with a 1,5 GiB cache the same ubatch
+  needs ~13 GiB compute buffer and OOMs. `--no-op-offload` works but is much
+  slower for prefill.
 - DSpark: works on the b12811 pin (PR #32218 + Inkling draft-state width fix);
   the old b12716 failed every published drafter with
   `joint_proj expected 2816x768, got 5120x768`. Drafter:
@@ -177,8 +178,8 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   `inkling2-mini-safe` (ubatch 32 + 1,5 GiB cache) gives 69 tok/s prefill /
   33 tok/s gen / 14,6 GiB.
   Repro #32807 (repeat sentence ×20) produced no gibberish.
-  **Caveat:** even at ~69 tok/s prefill, a full 128K prompt takes ~30 min; the
-  context is allocated and valid, but practical prompts are much shorter.
+  **Caveat:** even at ~250 tok/s prefill, a full 128K prompt still takes ~7 min;
+  the context is allocated and valid, but practical prompts are shorter.
 - Batch trade-off measured on this box (op-offload on unless noted, cache in MiB):
 
   | batch/ubatch | cache | prefill tok/s | gen tok/s | VRAM |
