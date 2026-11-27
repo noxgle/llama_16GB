@@ -132,8 +132,9 @@ Select with the `model` field of `/v1/chat/completions`; only one preset is
 resident at a time. See README → "Router mode (experimental)" for the exact
 `docker run` command and the switch-back procedure.
 
-OOM fallbacks: 48K → 40K, q3kxl 32K → 24K. Never "fix" OOM by offloading
-experts — there are none.
+OOM fallbacks for the dense Qwen profiles: 48K → 40K, q3kxl 32K → 24K. Never
+"fix" their OOM by offloading experts — they have none. Inkling is MoE and
+offloads experts by design (see below).
 
 ### Inkling-2-Mini (second model, added 2026-11-27)
 
