@@ -168,7 +168,7 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   clean. Headroom is only ~1 GiB — do not raise ubatch/cache.
   The older all-CPU-expert (`-cmoe`) variant used 12800 MiB and 15–17 tok/s.
   Repro #32807 (repeat sentence ×20) produced no gibberish.
-  **Caveat:** at ~15 tok/s prefill, a full 128K prompt would take hours; the
+  **Caveat:** even at ~69 tok/s prefill, a full 128K prompt takes ~30 min; the
   context is allocated and valid, but practical prompts are much shorter.
 - Batch trade-off measured on this box (op-offload on unless noted, cache in MiB):
 
