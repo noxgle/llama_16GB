@@ -26,6 +26,33 @@ annotated-style tags named `stable-b<NNNNN>-v1` build the release tag used in
 `configs/` and `install-llama.sh`. Bump the pin in the workflow, Dockerfile and
 profiles together.
 
+## Project targets (acceptance criteria)
+
+Every serving profile is expected to meet these on the dev box:
+
+| Requirement | Target |
+|---|---|
+| GPU | 16 GB VRAM class (RTX 5060 Ti 16 GB, ~15,9 GiB usable) |
+| Context | **131072 tokens** per slot |
+| KV cache | **`q8_0`** for both K and V |
+| Generation | **>= 20 tok/s** (measured) |
+| Prefill | **>= 200 tok/s** (measured, unique prompts, no prefix-cache reuse) |
+| Weight quant | prefer **Q4 or higher** (Q4_K_M, Q4_K_XL); **Q3 is acceptable** (Q3_K_XL, IQ3_S, IQ3_XXS) when Q4 cannot fit the VRAM/throughput budget |
+
+Status on 2026-11-27 (all numbers measured, not estimated):
+
+| Profile | ctx | KV | gen tok/s | prefill tok/s | quant | Meets targets? |
+|---|---|---|---|---|---|---|
+| `inkling2-mini` | 131072 | q8_0 | 28,9–35,6 | 248,9–254,8 | Q4_K_M | **YES** |
+| `iq3s-mtp` | 49152 | q8_0 | 51–63 | 878–921 | IQ3_S | ctx < 128K |
+| `q3kxl` | 32768 | q8_0 | 29 | ~907 | Q3_K_XL | ctx < 128K |
+| `iq3s-longctx` | 131072 | q4_0 | 19,4 | 881 | IQ3_S | KV q4_0, gen < 20 |
+
+Only the Inkling profile currently satisfies all targets. On Qwen3.8-27B a
+128K context with `q8_0` KV OOMs on a 16 GB card (measured), so `iq3s-longctx`
+uses `q4_0` and is explicitly an exception. Before changing a profile, check
+it against this table and update the "Meets targets?" column with new numbers.
+
 ## Hardware and hosts
 
 | Role | Host | Access | GPU | Notes |
