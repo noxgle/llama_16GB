@@ -175,15 +175,19 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   | batch/ubatch | cache | prefill tok/s | gen tok/s | VRAM |
   |---|---|---|---|---|
   | 32, selective -ot, cache 1536 (primary) | 1536 | 68,9 | 30,4–32,8 | 14872 MiB |
+  | 64, selective -ot, cache 1536 | 1536 | — (OOM at ~1,7K prompt) | 31,0 (short) | 15841 MiB |
+  | 128, selective -ot, cache 1536 | 1536 | OOM at load (3,4 GiB compute buffer) | — | — |
   | 32, -cmoe, cache 8192 | 8192 | 17,1 | 15,0–16,1 | 12800 MiB |
   | 64, -cmoe | 4096 | 28,4 | 9,3 | 15189 MiB |
   | 128, -cmoe | 2048 | 53,7 | 6,5 | 14725 MiB |
   | 128 | 4096 | OOM (9,9 GiB compute buffer) | — | — |
   | 1024 | 4096 (op-offload off) | OOM (25,7 GiB compute buffer) | — | — |
 
-  Presets `inkling2-mini-b64` / `inkling2-mini-b128` keep the working variants;
-  batch 1024 is **not possible** on 16 GB — the compute buffer scales with
-  ubatch, not with context.
+  Presets `inkling2-mini-b64` / `inkling2-mini-b128` are the older `-cmoe`
+  variants; for the primary selective recipe `UBATCH=32` is the only stable
+  value (verified again with an 8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen,
+  14895 MiB). Batch 1024 is **not possible** on 16 GB — the compute buffer
+  scales with ubatch, not with context.
 
 ## Repository layout (target)
 

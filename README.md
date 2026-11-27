@@ -290,10 +290,10 @@ experts, 1,5 GiB cache, batch 1024/ubatch 32): gen **30,4–32,8 tok/s**,
 prefill **68,9 tok/s** (8K prompt), VRAM **14872 MiB**, RAM free 23/30 GB.
 The all-CPU-expert variant (`inkling2-mini-cmoe`, 8 GiB cache) gives 15–17 tok/s
 and 12800 MiB — kept as fallback.
-Batch 1024 is not feasible: compute buffer alone needs ~25,7 GiB; batch 128
-needs ~9,9 GiB and only fits with a 2 GiB expert cache (prefill 53,7 tok/s but
-gen drops to 6,5 tok/s). Presets `inkling2-mini-b64` / `-b128` keep the working
-middle variants. `inkling2-mini-noop` (op-offload off,
+UBatch 128 OOMs at load (3,4 GiB compute buffer); ubatch 64 loads at 15841 MiB
+but crashes on a ~1,7K prompt. The primary `UBATCH=32` was re-verified with an
+8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen, 14895 MiB VRAM. Batch 1024 is
+not feasible at all: compute buffer alone needs ~25,7 GiB. `inkling2-mini-noop` (op-offload off,
 batch 256) gives 9,7 tok/s and 13300 MiB — kept as fallback only. A full 128K
 prompt is allocated but would take hours to prefill at ~15 tok/s.
 
