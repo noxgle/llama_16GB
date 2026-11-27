@@ -204,9 +204,8 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   `REASONING_BUDGET_MESSAGE=" thinking budget exceeded, answer now."`
   (compose maps it to `LLAMA_ARG_THINK_BUDGET_MESSAGE`; router presets use the
   `reasoning-budget-message` key with two spaces after `=` so the value keeps
-  its leading space). It only appears when a thinking-budget cap is active
-  (`REASONING_BUDGET >= 0`); current value `-1` means unlimited, so it is
-  configured but dormant.
+  its leading space). It is active with `REASONING_BUDGET=8192` (token cap);
+  when the cap is hit, the message is injected before the end-of-thinking tag.
 - Measured on RTX 5060 Ti with the PRIMARY recipe (128K, q8_0, ubatch 256,
   no MoE cache): VRAM **13442 MiB**, RAM free 23/30 GB, prefill **254,8 tok/s**
   on 22K tokens and **248,9 tok/s** on 39,6K tokens, gen **28,9–31,9 tok/s**.
