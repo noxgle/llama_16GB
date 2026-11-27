@@ -48,6 +48,7 @@ case "$MODEL" in
     q38)       MODE=single;  CONFIG_NAME="qwen3.8-27b-iq3s-mtp.env"; QUANT="iq3s";  MTP=1 ;;
     q38-q3kxl) MODE=single;  CONFIG_NAME="qwen3.8-27b-q3kxl.env";    QUANT="q3kxl"; MTP=0 ;;
     q38-long)  MODE=single;  CONFIG_NAME="qwen3.8-27b-iq3s-longctx.env"; QUANT="iq3s"; MTP=0 ;;
+    inkling2)  MODE=single;  CONFIG_NAME="inkling-2-mini.env";             QUANT="q4km"; MTP=0 ;;
     *)
         cat >&2 <<USAGE
 Usage: $(basename "$0") [router|q38|q38-q3kxl|q38-long] [--build-local] [--skip-download] [--with-systemd]
@@ -57,6 +58,7 @@ Usage: $(basename "$0") [router|q38|q38-q3kxl|q38-long] [--build-local] [--skip-
   q38        single-model fallback: UD-IQ3_S + MTP, 48K context
   q38-q3kxl  single-model: UD-Q3_K_XL, 32K context (quality, no MTP)
   q38-long   single-model: UD-IQ3_S, 128K context (no MTP, q4_0 KV)
+  inkling2   single-model: Inkling-2-Mini UD-Q4_K_M, MoE + CPU experts, 128K
 
 Options:
   --build-local    build the image on this host (GGML_NATIVE=ON, 60-120 min)
@@ -202,6 +204,9 @@ elif $ROUTER; then
         --quant iq3s --dest "$INSTALL_DIR/models"
     DEST="$INSTALL_DIR/models" bash "$INSTALL_DIR/deploy/download-model.sh" \
         --quant q3kxl --no-mtp --dest "$INSTALL_DIR/models"
+elif [[ "$MODEL" == inkling2 ]]; then
+    DEST="$INSTALL_DIR/models" bash "$INSTALL_DIR/deploy/download-model.sh" \
+        --model inkling2 --dest "$INSTALL_DIR/models"
 else
     DL_ARGS=(--quant "$QUANT" --dest "$INSTALL_DIR/models")
     [[ "$MTP" -eq 1 ]] || DL_ARGS+=(--no-mtp)

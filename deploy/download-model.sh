@@ -9,12 +9,14 @@
 #   deploy/download-model.sh                      # UD-IQ3_S + MTP (default)
 #   deploy/download-model.sh --quant q3kxl --no-mtp
 #   deploy/download-model.sh --quant iq2s --with-mmproj
+#   deploy/download-model.sh --model inkling2   # Inkling-2-Mini UD-Q4_K_M
 #
 # Options:
-#   --quant iq3s|q3kxl|iq2s   quantization (default: iq3s)
+#   --model qwen|inkling2     model family (default: qwen)
+#   --quant iq3s|q3kxl|iq2s   quantization for qwen (default: iq3s)
 #   --dest DIR                target dir (default: <repo>/models)
-#   --no-mtp                  skip the MTP draft head
-#   --with-mmproj             also download the vision projector
+#   --no-mtp                  skip the MTP draft head (qwen only)
+#   --with-mmproj             also download the vision projector (qwen only)
 #   --revision REV            HF revision (default: pinned commit)
 
 set -euo pipefail
@@ -26,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEST="${DEST:-$SCRIPT_DIR/../models}"
 
 QUANT="iq3s"
+MODEL="qwen"
 WITH_MTP=1
 WITH_MMPROJ=0
 
@@ -41,6 +44,7 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --model)      MODEL="${2:?}"; shift 2 ;;
         --quant)      QUANT="${2:?}"; shift 2 ;;
         --dest)       DEST="${2:?}"; shift 2 ;;
         --revision)   REVISION="${2:?}"; shift 2 ;;
@@ -51,11 +55,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-case "$QUANT" in
-    iq3s)  MAIN_PATH="Qwen3.8-27B-UD-IQ3_S.gguf";  MAIN_SIZE=12040883104 ;;
-    q3kxl) MAIN_PATH="Qwen3.8-27B-UD-Q3_K_XL.gguf"; MAIN_SIZE=13146393504 ;;
-    iq2s)  MAIN_PATH="Qwen3.8-27B-UD-IQ2_S.gguf";  MAIN_SIZE=8422719488 ;;
-    *) echo "Unknown quant: $QUANT (use iq3s|q3kxl|iq2s)" >&2; exit 1 ;;
+case "$MODEL" in
+    qwen)
+        case "$QUANT" in
+            iq3s)  MAIN_PATH="Qwen3.8-27B-UD-IQ3_S.gguf";  MAIN_SIZE=12040883104 ;;
+            q3kxl) MAIN_PATH="Qwen3.8-27B-UD-Q3_K_XL.gguf"; MAIN_SIZE=13146393504 ;;
+            iq2s)  MAIN_PATH="Qwen3.8-27B-UD-IQ2_S.gguf";  MAIN_SIZE=8422719488 ;;
+            *) echo "Unknown quant: $QUANT (use iq3s|q3kxl|iq2s)" >&2; exit 1 ;;
+        esac
+        ;;
+    inkling2)
+        # Root GGUFs use Unsloth's layout and are rejected by mainline.
+        # Mainline_Support holds the same tensors in mainline layout; the
+        # .gguf_file suffix is intentional (avoids HF tooling mixing layouts).
+        REPO="unsloth/Inkling-2-Mini-GGUF"
+        REVISION="8078d149286eec7193795413b9e0643da6d11fa1"
+        MAIN_PATH="Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file"
+        MAIN_SIZE=16610544608
+        MAIN_TARGET="Inkling-2-Mini-UD-Q4_K_M.gguf"
+        WITH_MTP=0
+        WITH_MMPROJ=0
+        ;;
+    *) echo "Unknown model: $MODEL (use qwen|inkling2)" >&2; exit 1 ;;
 esac
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
@@ -89,7 +110,7 @@ verify() {
 fetch() {
     local path="$1" size="$2"
     local target
-    target="$DEST/$(basename "$path")"
+    target="$DEST/${3:-$(basename "$path")}"
 
     if [[ -f "$target" ]] && [[ "$(stat -c%s "$target")" -eq "$size" ]]; then
         info "already present: $(basename "$target")"
@@ -117,7 +138,7 @@ fetch() {
 }
 
 echo ""
-echo "Qwen3.8-27B download"
+echo "$MODEL download"
 echo "  repo:     $REPO"
 echo "  revision: $REVISION"
 echo "  quant:    $QUANT"
@@ -125,7 +146,7 @@ echo "  dest:     $DEST"
 echo "  mtp:      $([[ $WITH_MTP -eq 1 ]] && echo yes || echo no)"
 echo "  mmproj:   $([[ $WITH_MMPROJ -eq 1 ]] && echo yes || echo no)"
 
-fetch "$MAIN_PATH" "$MAIN_SIZE"
+fetch "$MAIN_PATH" "$MAIN_SIZE" "${MAIN_TARGET:-}"
 [[ "$WITH_MTP" -eq 1 ]] && fetch "$MTP_PATH" "$MTP_SIZE"
 [[ "$WITH_MMPROJ" -eq 1 ]] && fetch "$MMPROJ_PATH" "$MMPROJ_SIZE"
 

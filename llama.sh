@@ -6,6 +6,7 @@
 #   ./llama.sh start q38          # default: UD-IQ3_S + MTP, 48K
 #   ./llama.sh start q38-q3kxl    # quality: UD-Q3_K_XL, 32K
 #   ./llama.sh start q38-long     # long context: UD-IQ3_S, 128K
+#   ./llama.sh start inkling2     # Inkling-2-Mini, MoE + CPU experts, 128K
 #   ./llama.sh status | stop | logs [model] | pull | health
 #
 # Env:
@@ -27,6 +28,7 @@ config_for() {
         q38)       echo "configs/qwen3.8-27b-iq3s-mtp.env" ;;
         q38-q3kxl) echo "configs/qwen3.8-27b-q3kxl.env" ;;
         q38-long)  echo "configs/qwen3.8-27b-iq3s-longctx.env" ;;
+        inkling2)  echo "configs/inkling-2-mini.env" ;;
         *) return 1 ;;
     esac
 }
@@ -42,7 +44,7 @@ stop_all() {
 
 start() {
     local model="$1" cfg
-    cfg=$(config_for "$model") || { err "unknown model: $model (q38|q38-q3kxl|q38-long)"; exit 1; }
+    cfg=$(config_for "$model") || { err "unknown model: $model (q38|q38-q3kxl|q38-long|inkling2)"; exit 1; }
     [[ -f "$ROOT/$cfg" ]] || { err "config not found: $cfg"; exit 1; }
 
     set -a
@@ -84,7 +86,21 @@ start() {
         --spec-draft-n-min "${SPEC_DRAFT_N_MIN:-0}"
         --spec-draft-p-min "${SPEC_DRAFT_P_MIN:-0.0}"
         --repeat-penalty "${REPEAT_PENALTY:-1.0}"
+        --temp "${TEMPERATURE:-1.0}"
+        --top-p "${TOP_P:-0.95}"
+        --top-k "${TOP_K:-20}"
+        --min-p "${MIN_P:-0.05}"
     )
+
+    if [[ -n "${CPU_MOE_FLAG:-}" ]]; then
+        args+=("$CPU_MOE_FLAG")
+    fi
+    if [[ -n "${MOE_CACHE_MIB:-}" ]]; then
+        args+=(--moe-cache-mib "$MOE_CACHE_MIB")
+    fi
+    if [[ -n "${MOE_CACHE_CPU_SHARE:-}" ]]; then
+        args+=(--moe-cache-cpu-share "$MOE_CACHE_CPU_SHARE")
+    fi
 
     if [[ -n "${MMPROJ:-}" ]]; then
         args+=(--mmproj "$MMPROJ")
@@ -121,7 +137,7 @@ start() {
 
 case "${1:-help}" in
     start)
-        [[ -n "${2:-}" ]] || { err "usage: $0 start {q38|q38-q3kxl|q38-long}"; exit 1; }
+        [[ -n "${2:-}" ]] || { err "usage: $0 start {q38|q38-q3kxl|q38-long|inkling2}"; exit 1; }
         start "$2" ;;
     stop)   stop_all ;;
     status)
