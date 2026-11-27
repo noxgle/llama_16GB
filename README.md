@@ -91,7 +91,7 @@ For the default router deployment, use `configs/router.ini` instead.
 | `configs/qwen3.8-27b-iq3s-mtp.env` (fallback) | UD-IQ3_S (11.2 GiB) | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
 | `configs/qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL (12.2 GiB) | off | 32K | q8_0 | ~14.4 GiB |
 | `configs/qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S (11.2 GiB) | off | 128K | q4_0 | ~14.6 GiB |
-| `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q8_0 | 14872 MiB |
+| `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q8_0 | 13442 MiB |
 
 `UD-Q3_K_XL` is the quality option: it is ~1 GiB larger and leaves no room for
 the MTP draft head (another 1.28 GiB). `iq3s-longctx` trades KV precision and
@@ -295,6 +295,12 @@ DSpark on b12811 is available as optional preset `inkling2-mini-dspark`
 repeated-text gen 40,8 tok/s (accept 206/276) vs 35,8 without, but no gain on
 short prompts and VRAM 15764 vs 14602 MiB — kept optional. No regression on
 Qwen (60,1 tok/s). `n_max=2` was slower than 3.
+
+DEFAULT `inkling2-mini` keeps 128K + q8_0 KV and reaches **249–255 tok/s
+prefill** with gen 29–32 tok/s (ubatch 256, MoE cache off, VRAM 13442 MiB;
+verified with a 39,6K prompt). `inkling2-mini-balanced` gives 138 tok/s prefill
+with gen 33 and an active expert cache; `inkling2-mini-safe` is the old
+69 tok/s / 33 tok/s configuration.
 
 Prefill tuning: `inkling2-mini-fastpp128` (128K, q4_0 KV, ubatch 128) gives
 138,7 tok/s vs 69 on the q8_0/ubatch-32 primary, with unchanged gen (~33 tok/s)

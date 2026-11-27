@@ -150,11 +150,11 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   (host-expert copy corruption). b12811 includes both.
 - Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary,
   community recipe), `inkling2-mini-cmoe`, `inkling2-mini-noop`, `-b64`, `-b128`.
-  `CTX=131072`, `q8_0` KV, `BATCH=1024`/`UBATCH=32`, `load-mode none` (mmap),
+  `CTX=131072`, `q8_0` KV, `BATCH=1024`/**`UBATCH=256`**, `load-mode none` (mmap),
   `--override-tensor 'blk\.(0|1|2|3|20|21|22|23)\.ffn_.*_exps.*=CPU'` (only
-  non-looped experts in RAM; looped experts stay on GPU), 1,5 GiB
-  `--moe-cache-mib`, CPU share 0.0, sampling temp 1.0 / top-p 1.0 / top-k 0 /
-  min-p 0. This was adapted from a community config found online.
+  non-looped experts in RAM; looped experts stay on GPU), `--moe-cache-mib 0`
+  (VRAM freed for the larger ubatch), CPU share 0.0, sampling temp 1.0 /
+  top-p 1.0 / top-k 0 / min-p 0. Adapted from a community config found online.
 - Keep host-tensor op offload **on** but `UBATCH<=32`: at 256 the compute
   buffer alone wants ~13 GiB (6,5 GiB even with selective `-ot`) and OOMs at
   128K. `--no-op-offload` works too but is much slower.
@@ -170,11 +170,12 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
-- Measured on RTX 5060 Ti with the primary selective recipe and `q8_0` KV:
-  VRAM **14872–14894 MiB**, RAM free **23/30 GB** (mmap not mlock), gen
-  **30,4–32,8 tok/s**, prefill **68,9 tok/s** on an 8K prompt. Repro #32807
-  clean. Headroom is only ~1 GiB — do not raise ubatch/cache.
-  The older all-CPU-expert (`-cmoe`) variant used 12800 MiB and 15–17 tok/s.
+- Measured on RTX 5060 Ti with the PRIMARY recipe (128K, q8_0, ubatch 256,
+  no MoE cache): VRAM **13442 MiB**, RAM free 23/30 GB, prefill **254,8 tok/s**
+  on 22K tokens and **248,9 tok/s** on 39,6K tokens, gen **28,9–31,9 tok/s**.
+  Repro #32807 clean, health OK. No gen sacrifice was needed. The conservative
+  `inkling2-mini-safe` (ubatch 32 + 1,5 GiB cache) gives 69 tok/s prefill /
+  33 tok/s gen / 14,6 GiB.
   Repro #32807 (repeat sentence ×20) produced no gibberish.
   **Caveat:** even at ~69 tok/s prefill, a full 128K prompt takes ~30 min; the
   context is allocated and valid, but practical prompts are much shorter.
@@ -206,8 +207,10 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 
   | preset | ctx | KV | ubatch | prefill tok/s | gen tok/s | VRAM |
   |---|---|---|---|---|---|---|
-  | `inkling2-mini` (primary) | 131072 | q8_0 | 32 | 69 | 33 | 14600 MiB |
-  | `inkling2-mini-fastpp128` | 131072 | q4_0 | 128 | **138,7** | 33,0 | 13807 MiB |
+  | `inkling2-mini` (primary) | 131072 | q8_0 | **256** | **248,9–254,8** | 28,9–31,9 | 13442 MiB |
+  | `inkling2-mini-balanced` | 131072 | q8_0 | 128 | 138,2 | 33,0 | 14883 MiB |
+  | `inkling2-mini-safe` | 131072 | q8_0 | 32 | 69 | 33 | 14600 MiB |
+  | `inkling2-mini-fastpp128` | 131072 | q4_0 | 128 | 138,7 | 33,0 | 13807 MiB |
   | `inkling2-mini-fastpp` | 49152 | q4_0 | 256 | **248,8–252,1** | 33,1 | 12993 MiB |
   | `inkling2-mini-fastpp` | 49152 | q4_0 | 128 | 138,7 | 32,7 | 12959 MiB |
 
