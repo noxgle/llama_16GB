@@ -97,11 +97,11 @@ For the default router deployment, use `configs/router.ini` instead.
 | `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q8_0 | 13442 MiB |
 
 `UD-Q3_K_XL` is the quality option: it is ~1 GiB larger and leaves no room for
-the MTP draft head (another 1.28 GiB). `iq3s-longctx` trades KV precision and
+the MTP draft head (another 1.28 GiB). `qwen-iq3s-longctx` trades KV precision and
 MTP for 128K of context.
 
 All profiles use `CTX_CHECKPOINTS=8` and `REPEAT_PENALTY=1.0`. Qwen profiles use
-`CACHE_RAM=8192`; `iq3s-mtp` uses `draft-mtp,ngram-mod` and the no-MTP profiles
+`CACHE_RAM=8192`; `qwen-iq3s-mtp` uses `draft-mtp,ngram-mod` and the no-MTP profiles
 use `ngram-mod`. Inkling uses `CACHE_RAM=4096`, `load-mode none` (mmap),
 `REASONING_BUDGET=8192` and the message `" thinking budget exceeded, answer now."`.
 
@@ -120,8 +120,8 @@ request is dispatched by its `model` field; the router starts and stops child
 `llama-server` processes on demand. **Docker is not restarted** — only the
 child processes come and go.
 
-`configs/router.ini` defines six presets: `iq3s-mtp` (48K + MTP, tuned),
-`q3kxl` (32K), `longctx` (128K, q4_0 KV), `inkling2-mini` (MoE, 128K, q8_0,
+`configs/router.ini` defines six presets: `qwen-iq3s-mtp` (48K + MTP, tuned),
+`qwen-q3kxl` (32K), `qwen-iq3s-longctx` (128K, q4_0 KV), `inkling2-mini` (MoE, 128K, q8_0,
 selective CPU experts — primary), `inkling2-mini-balanced` and
 `inkling2-mini-dspark`.
 
@@ -139,13 +139,13 @@ Use it:
 curl -s localhost:8089/models | jq '.data[] | {id, status: .status.value}'
 
 curl -s localhost:8089/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
+  -d '{"model":"qwen-iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
 
-curl -s 'localhost:8089/metrics?model=iq3s-mtp' | grep llamacpp   # Prometheus
-curl -s 'localhost:8089/slots?model=iq3s-mtp' | jq '.[0].n_ctx'    # slot info
+curl -s 'localhost:8089/metrics?model=qwen-iq3s-mtp' | grep llamacpp   # Prometheus
+curl -s 'localhost:8089/slots?model=qwen-iq3s-mtp' | jq '.[0].n_ctx'    # slot info
 
 curl -s -X POST localhost:8089/models/unload -H 'Content-Type: application/json' \
-  -d '{"model":"iq3s-mtp"}'
+  -d '{"model":"qwen-iq3s-mtp"}'
 # Wait until GET /models reports status "unloaded" before /models/load,
 # otherwise you get 500 "model limit reached".
 ```
@@ -162,9 +162,9 @@ Measured on the 5060 Ti (2026-11-25), same Docker container throughout:
 
 | Preset | VRAM | gen tok/s | Switch time |
 |---|---|---|---|
-| `iq3s-mtp` | 14400 MiB | 63.2 (draft 19/20) | ~5 s |
-| `q3kxl` | 13340 MiB | 29.0 | ~41 s cold |
-| `longctx` | 13984 MiB | 30.4 | ~5 s |
+| `qwen-iq3s-mtp` | 14400 MiB | 63.2 (draft 19/20) | ~5 s |
+| `qwen-q3kxl` | 13340 MiB | 29.0 | ~41 s cold |
+| `qwen-iq3s-longctx` | 13984 MiB | 30.4 | ~5 s |
 
 These gen numbers were measured **before** the `ngram-mod`/cache tuning; they
 are still a valid baseline. See [Benchmarking](#benchmarking) for current
@@ -215,10 +215,10 @@ reachable at all on a 16 GB card.
 ./llama.sh status | stop | logs q38 | health
 
 # API — router mode: "model" selects one of six presets:
-# iq3s-mtp | q3kxl | longctx | inkling2-mini | inkling2-mini-balanced | inkling2-mini-dspark
+# qwen-iq3s-mtp | qwen-q3kxl | qwen-iq3s-longctx | inkling2-mini | inkling2-mini-balanced | inkling2-mini-dspark
 curl -s localhost:8089/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}' \
+  -d '{"model":"qwen-iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}' \
   | jq '{gen: .timings.predicted_per_second, prefill: .timings.prompt_per_second, draft: .timings.draft_n, accepted: .timings.draft_n_accepted}'
 # single-model fallback uses "model":"qwen3.8-27b" instead
 ```
@@ -237,14 +237,14 @@ Systemd units (installed with `install-llama.sh --with-systemd`):
 
 Most scripts run **on the server** and recreate the compose stack; they refuse
 to run when the model is not on the GPU. `tune-ab.sh` is the exception: it needs
-router mode and the `iq3s-mtp` preset.
+router mode and the `qwen-iq3s-mtp` preset.
 
 ```bash
 ./benchmark/bench-vram.sh                     # ctx sweep: VRAM peak, prefill, gen
 ./benchmark/bench-mtp-sweep.sh                # SPEC_DRAFT_N_MAX 0..4, acceptance rate
 ./benchmark/bench-batch.sh                    # BATCH/UBATCH prefill sweep
 ./benchmark/bench-knowledge.sh                # small deterministic quality suite
-./benchmark/tune-ab.sh                        # router copy/edit + cache test (iq3s-mtp)
+./benchmark/tune-ab.sh                        # router copy/edit + cache test (qwen-iq3s-mtp)
 ```
 
 Raw CSVs/Markdown land in `benchmark/` (gitignored except for the scripts).
@@ -261,7 +261,7 @@ sm_120a, measured on llama.cpp `b12716` / `stable-b12716-v1`; new pin is `b12811
 | `qwen3.8-27b-iq3s-mtp.env`, ctx=65536 (near-full prompt) | 48.3 | 845.2 | 15110 MiB | `stable-b12716-v1` |
 
 The sweep above was run with the pre-tuning settings (MTP only, 4096/4 cache).
-Current default `iq3s-mtp` (ngram-mod) measured 60.7 gen tok/s on a short
+Current default `qwen-iq3s-mtp` (ngram-mod) measured 60.7 gen tok/s on a short
 prompt and 282.6–308.5 tok/s on copy/edit workloads (see below).
 
 Raw CSVs: `benchmark/vram-20261125-113852.csv` (script output printed to the
@@ -285,7 +285,7 @@ copy/edit prompts, 2026-11-25):
 
 | Preset | gen tok/s (copy 1 / 2) | draft accepted |
 |---|---|---|
-| `iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
+| `qwen-iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
 | MTP only (old baseline, preset removed) | 63.3 / 63.1 | 798/801, 797/803 |
 
 DSpark on b12811 is available as optional preset `inkling2-mini-dspark`

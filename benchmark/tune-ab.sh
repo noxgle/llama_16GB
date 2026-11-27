@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # A/B verification: tuned vs baseline preset (router mode).
-# Requires the `iq3s-mtp` preset (draft-mtp,ngram-mod + cache-ram 8192 +
+# Requires the `qwen-iq3s-mtp` preset (draft-mtp,ngram-mod + cache-ram 8192 +
 # 8 checkpoints) in router.ini. Measures copy/edit and prompt-cache return.
 #
 # Part A: two copy/edit workloads (long source file reproduced with one change).
@@ -55,7 +55,7 @@ for n, seed in enumerate(("alpha", "bravo")):
 print("copy payloads ready")
 PY
 
-for model in iq3s-mtp; do
+for model in qwen-iq3s-mtp; do
     for n in 0 1; do
         sed "s/PLACEHOLDER/$model/" "/tmp/tune-copy-$n.json" > "/tmp/tune-copy-$model-$n.json"
         ask "$model" "/tmp/tune-copy-$model-$n.json" "copy-$model-$n"
@@ -79,7 +79,7 @@ json.dump({"model": "PLACEHOLDER", "messages": [{"role": "user", "content": "Wha
 print("long prompt chars:", len(prompt))
 PY
 
-for model in iq3s-mtp; do
+for model in qwen-iq3s-mtp; do
     sed "s/PLACEHOLDER/$model/" /tmp/tune-long.json > "/tmp/tune-long-$model.json"
     sed "s/PLACEHOLDER/$model/" /tmp/tune-foreign.json > "/tmp/tune-foreign-$model.json"
     ask "$model" "/tmp/tune-long-$model.json" "long-$model"

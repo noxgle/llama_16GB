@@ -54,7 +54,7 @@ case "$MODEL" in
 Usage: $(basename "$0") [router|q38|q38-q3kxl|q38-long] [--build-local] [--skip-download] [--with-systemd]
 
   router     llama-server router mode with configs/router.ini  (default)
-             presets: iq3s-mtp | q3kxl | longctx, routed by the "model" field
+             presets: qwen-iq3s-mtp | qwen-q3kxl | qwen-iq3s-longctx, routed by the "model" field
   q38        single-model fallback: UD-IQ3_S + MTP, 48K context
   q38-q3kxl  single-model: UD-Q3_K_XL, 32K context (quality, no MTP)
   q38-long   single-model: UD-IQ3_S, 128K context (no MTP, q4_0 KV)
@@ -80,7 +80,7 @@ heading "Pre-flight"
 [[ "$EUID" -eq 0 ]] || die "must run as root (or via sudo)"
 command -v apt-get >/dev/null || die "apt-get required (Debian/Ubuntu)"
 info "host:   $(hostname)"
-info "mode:   $MODE ($( $ROUTER && echo "presets: iq3s-mtp | q3kxl | longctx" || echo "$QUANT, mtp=$MTP"))"
+info "mode:   $MODE ($( $ROUTER && echo "presets: qwen-iq3s-mtp | qwen-q3kxl | qwen-iq3s-longctx" || echo "$QUANT, mtp=$MTP"))"
 info "repo:   $REPO_URL -> $INSTALL_DIR"
 info "image:  $LLAMA_IMAGE"
 info "build:  $($BUILD_LOCAL && echo "local (sm_$GGML_CUDA_ARCH, native)" || echo 'pull from GHCR')"
@@ -280,10 +280,10 @@ $READY || die "server did not become healthy — check: docker logs llama16-rout
 heading "Step 10/10 — Verification"
 if $ROUTER; then
     info "presets: $(curl -s "http://localhost:${PORT}/models" | python3 -c 'import json,sys; print(", ".join(m["id"] for m in json.load(sys.stdin)["data"]))')"
-    info "loading default preset iq3s-mtp with a probe request..."
+    info "loading default preset qwen-iq3s-mtp with a probe request..."
     curl -s --max-time 600 "http://localhost:${PORT}/v1/chat/completions" \
         -H 'Content-Type: application/json' \
-        -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":32,"reasoning_effort":"low"}' \
+        -d '{"model":"qwen-iq3s-mtp","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":32,"reasoning_effort":"low"}' \
         | python3 -c 'import json,sys; d=json.load(sys.stdin); print("  content:", repr(d["choices"][0]["message"].get("content")))' || true
 else
     docker compose ps

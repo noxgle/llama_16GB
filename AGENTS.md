@@ -44,13 +44,13 @@ Status on 2026-11-27 (all numbers measured, not estimated):
 | Profile | ctx | KV | gen tok/s | prefill tok/s | quant | Meets targets? |
 |---|---|---|---|---|---|---|
 | `inkling2-mini` | 131072 | q8_0 | 28,9–35,6 | 248,9–254,8 | Q4_K_M | **YES** |
-| `iq3s-mtp` | 49152 | q8_0 | 51–63 | 878–921 | IQ3_S | ctx < 128K |
-| `q3kxl` | 32768 | q8_0 | 29 | ~907 | Q3_K_XL | ctx < 128K |
-| `iq3s-longctx` | 131072 | q4_0 | 19,4 | 881 | IQ3_S | KV q4_0, gen < 20 |
+| `qwen-iq3s-mtp` | 49152 | q8_0 | 51–63 | 878–921 | IQ3_S | ctx < 128K |
+| `qwen-q3kxl` | 32768 | q8_0 | 29 | ~907 | Q3_K_XL | ctx < 128K |
+| `qwen-iq3s-longctx` | 131072 | q4_0 | 19,4 | 881 | IQ3_S | KV q4_0, gen < 20 |
 
 Only the Inkling profile currently satisfies all targets. Lower KV precision
 is allowed case-by-case: on Qwen3.8-27B a 128K context with `q8_0` KV OOMs on a
-16 GB card (measured), so `iq3s-longctx` uses `q4_0`. Every such exception must
+16 GB card (measured), so `qwen-iq3s-longctx` uses `q4_0`. Every such exception must
 be justified with measured VRAM/quality numbers and recorded in the table.
 Before changing a profile, check it against this table and update the
 "Meets targets?" column with new numbers.
@@ -95,7 +95,7 @@ Install layout for this repo:
 |---|---|
 | Install dir | `/opt/llama16` |
 | **Active runtime (default)** | `llama16-router` container: `llama-server` in router mode, `--restart unless-stopped` |
-| Router config | `/opt/llama16/configs/router.ini` (presets `iq3s-mtp`, `q3kxl`, `longctx`) |
+| Router config | `/opt/llama16/configs/router.ini` (presets `qwen-iq3s-mtp`, `qwen-q3kxl`, `qwen-iq3s-longctx`) |
 | Compose project | `llama16` (`COMPOSE_PROJECT_NAME`) — **fallback**, stopped while the router is active |
 | Port | `8089` (one owner at a time: router **or** compose) |
 | Systemd | `llama16-router.service` (default) or `llama16-compose.service` (fallback) + GPU watchdog; install with `--with-systemd` |
@@ -142,7 +142,7 @@ VRAM budget = weights + optional MTP + KV + ~0.15 GiB recurrent state +
 
 Common: `NGLAYERS=999`, `--load-mode mlock`, `--fit off`, `PARALLEL=1`,
 `CTX_CHECKPOINTS=8`, `CACHE_RAM=8192`, `REPEAT_PENALTY=1.0`, `--alias qwen3.8-27b`.
-`iq3s-mtp` uses `SPEC_TYPE=draft-mtp,ngram-mod`; the no-MTP profiles use
+`qwen-iq3s-mtp` uses `SPEC_TYPE=draft-mtp,ngram-mod`; the no-MTP profiles use
 `SPEC_TYPE=ngram-mod`. All three flags are present in b12811; no rebuild needed.
 
 Single-model compose profiles (fallback path):
@@ -155,13 +155,13 @@ Single-model compose profiles (fallback path):
 | `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | 13992 MiB |
 
 **Default deployment = router mode** with six presets in `configs/router.ini`:
-Qwen `iq3s-mtp` (default), `q3kxl`, `longctx`; Inkling `inkling2-mini` (primary),
+Qwen `qwen-iq3s-mtp` (default), `qwen-q3kxl`, `qwen-iq3s-longctx`; Inkling `inkling2-mini` (primary),
 `inkling2-mini-balanced`, `inkling2-mini-dspark`.
 Select with the `model` field of `/v1/chat/completions`; only one preset is
 resident at a time. See README → "Router mode (experimental)" for the exact
 `docker run` command and the switch-back procedure.
 
-OOM fallbacks for the dense Qwen profiles: 48K → 40K, q3kxl 32K → 24K. Never
+OOM fallbacks for the dense Qwen profiles: 48K → 40K, qwen-q3kxl 32K → 24K. Never
 "fix" their OOM by offloading experts — they have none. Inkling is MoE and
 offloads experts by design (see below).
 
@@ -241,7 +241,7 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   |---|---|---|---|---|
   | `inkling2-mini` | 219 / 857 / 1682 | 80,4 / 69,1 / 69,5 | 36,5 / 34,6 / 33,3 | ~14620 MiB |
   | `inkling2-mini-dspark` | 231 / 857 / 1682 | 66,4 / 68,5 / 68,9 | 34,3 / 33,7 / 34,8 | ~15780 MiB |
-  | `iq3s-mtp` (Qwen) | 20127 | **898,8** | 53,2 | 14420 MiB |
+  | `qwen-iq3s-mtp` (Qwen) | 20127 | **898,8** | 53,2 | 14420 MiB |
 
   DSpark does not slow prefill; it only adds VRAM. b12716 Qwen at ~15K tokens
   was 907 tok/s — no regression from the pin bump.
@@ -292,10 +292,10 @@ AGENTS.md                       this file
 ssh root@192.168.200.38
 curl -s localhost:8089/models              # preset ids + loaded/unloaded status
 curl -s localhost:8089/v1/chat/completions -H 'Content-Type: application/json' \
-  -d '{"model":"iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
-# other model values: q3kxl | longctx; swap via "model" field, no Docker restart
-curl -s -X POST localhost:8089/models/unload -H 'Content-Type: application/json' -d '{"model":"iq3s-mtp"}'
-curl -s -X POST localhost:8089/models/load   -H 'Content-Type: application/json' -d '{"model":"q3kxl"}'
+  -d '{"model":"qwen-iq3s-mtp","messages":[{"role":"user","content":"hi"}],"max_tokens":64}'
+# other model values: qwen-q3kxl | qwen-iq3s-longctx; swap via "model" field, no Docker restart
+curl -s -X POST localhost:8089/models/unload -H 'Content-Type: application/json' -d '{"model":"qwen-iq3s-mtp"}'
+curl -s -X POST localhost:8089/models/load   -H 'Content-Type: application/json' -d '{"model":"qwen-q3kxl"}'
 # wait for status "unloaded" before /models/load (else 500 model limit reached)
 
 # --- remote: single-model compose (fallback; stop router first) ---
@@ -323,8 +323,8 @@ curl -s http://localhost:8089/v1/chat/completions \
 nvidia-smi --query-gpu=memory.used --format=csv,noheader -lms 500
 
 # --- monitoring (--metrics is enabled in start-router.sh, compose and llama.sh) ---
-curl -s 'http://localhost:8089/slots?model=iq3s-mtp' | jq '.[0] | {n_ctx, speculative, n_prompt_tokens}'
-curl -s 'http://localhost:8089/metrics?model=iq3s-mtp' | grep llamacpp | head
+curl -s 'http://localhost:8089/slots?model=qwen-iq3s-mtp' | jq '.[0] | {n_ctx, speculative, n_prompt_tokens}'
+curl -s 'http://localhost:8089/metrics?model=qwen-iq3s-mtp' | grep llamacpp | head
 # In router mode all GET endpoints need ?model=<preset>; without it: 400.
 # POST /slots/{id}?action=save additionally needs --slot-save-path (not enabled).
 ```
@@ -446,8 +446,8 @@ followed by that pair). Preset changes in `router.ini` only need a restart or
 runs this by default: one `llama-server` without `-m`, container `llama16-router`,
 started with `--models-preset /router.ini --models-max 1
 --models-memory-margin 512`; child processes load/unload presets on demand
-(`model` field in POST, `POST /models/{load,unload}`). Verified with `iq3s-mtp`,
-`q3kxl`, `longctx`: all answered, VRAM 14400/13340/13984 MiB, gen 63/29/30
+(`model` field in POST, `POST /models/{load,unload}`). Verified with
+`qwen-iq3s-mtp`, `qwen-q3kxl`, `qwen-iq3s-longctx`: all answered, VRAM 14400/13340/13984 MiB, gen 63/29/30
 tok/s, cold switch ~41 s, no Docker restart. Only one model fits in 16 GB.
 Wait for status `unloaded` before `/models/load` (else 500 "model limit
 reached"). Compose / `.env` / `llama.sh` are the single-model fallback; do not
@@ -502,7 +502,7 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
   `ggml_cuda_mul_mat_q`). Use `configs/qwen3.8-27b-iq3s-longctx.env` (MTP off,
   q4_0 KV) and validate there.
 - MTP is worth it here: gen ≈ 51 tok/s at 48K vs ≈ 25–30 without (hypothesis).
-- 128K longctx profile (IQ3_S, SPEC_TYPE=none, q4_0 KV, CTX=131072) probe
+- 128K qwen-iq3s-longctx profile (IQ3_S, SPEC_TYPE=none, q4_0 KV, CTX=131072) probe
   (`probe-ctx.sh 131072 0.40`): prefill 881.1 tok/s, gen 19.4 tok/s,
   VRAM after 13992 MiB — fits on the 16 GB card.
 - KV quality check (2026-11-25, IQ3_S, no MTP, temp 0): q4_0 vs q8_0 at the
@@ -525,7 +525,7 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
     same result (39065 cached tokens, ~2 s), so the benefit is for 65K+ chats
     and 128K profiles — not yet measured here. 30 GB host RAM has 28 GB free
     after the change.
-  - A/B harness: `benchmark/tune-ab.sh` measures the current `iq3s-mtp`
+  - A/B harness: `benchmark/tune-ab.sh` measures the current `qwen-iq3s-mtp`
     preset (the old baseline preset was removed from `router.ini`).
 
 ## Upstream issues to watch
@@ -558,7 +558,7 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 
 - [x] Validate 48K / 32K / 128K contexts on the 5060 Ti; record real VRAM peaks
       (measured 2026-11-25; see "Measured context range" above).
-- [x] Validate 128K on the 5060 Ti with the longctx profile; confirm it fits
+- [x] Validate 128K on the 5060 Ti with the qwen-iq3s-longctx profile; confirm it fits
       (measured 2026-11-25: fits, VRAM after ≈13992 MiB, prefill ≈881 tok/s).
       Note: without MTP gen ≈ 19 tok/s; quality comparison open (TODO above).
 - [ ] Confirm whether `UD-Q3_K_XL` fits 32K and whether it beats `IQ3_S` on the
