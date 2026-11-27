@@ -206,6 +206,12 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   `reasoning-budget-message` key with two spaces after `=` so the value keeps
   its leading space). It is active with `REASONING_BUDGET=8192` (token cap);
   when the cap is hit, the message is injected before the end-of-thinking tag.
+  Measured with a hard math proof (`reasoning_effort=high`, `max_tokens=10000`):
+  ~5104 reasoning tokens, finish_reason `stop`, 3370-char answer, budget message
+  **not** triggered. 8192 is a ceiling, not a target — it is not too small.
+  Empty answers with `max_tokens=32–128` are the client token budget being
+  consumed by thinking, not a too-small reasoning budget: set `max_tokens` above
+  the reasoning budget (e.g. 12288–16384) for hard tasks.
 - Measured on RTX 5060 Ti with the PRIMARY recipe (128K, q8_0, ubatch 256,
   no MoE cache): VRAM **13442 MiB**, RAM free 23/30 GB, prefill **254,8 tok/s**
   on 22K tokens and **248,9 tok/s** on 39,6K tokens, gen **28,9–31,9 tok/s**.
