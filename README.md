@@ -91,6 +91,7 @@ For the default router deployment, use `configs/router.ini` instead.
 | `configs/qwen3.8-27b-iq3s-mtp.env` (fallback) | UD-IQ3_S (11.2 GiB) | `n_max=2` | 48K | q8_0 | ~15.1 GiB |
 | `configs/qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL (12.2 GiB) | off | 32K | q8_0 | ~14.4 GiB |
 | `configs/qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S (11.2 GiB) | off | 128K | q4_0 | ~14.6 GiB |
+| `configs/inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE, 15.5 GiB) | off | 128K | q4_0 | 11726 MiB |
 
 `UD-Q3_K_XL` is the quality option: it is ~1 GiB larger and leaves no room for
 the MTP draft head (another 1.28 GiB). `iq3s-longctx` trades KV precision and
@@ -112,9 +113,9 @@ request is dispatched by its `model` field; the router starts and stops child
 `llama-server` processes on demand. **Docker is not restarted** — only the
 child processes come and go.
 
-`configs/router.ini` defines four presets: `iq3s-mtp` (48K + MTP, tuned),
-`q3kxl` (32K), `longctx` (128K, q4_0 KV), and `iq3s-mtp-base` (the pre-tuning
-A/B baseline — benchmark only).
+`configs/router.ini` defines: `iq3s-mtp` (48K + MTP, tuned), `q3kxl` (32K),
+`longctx` (128K, q4_0 KV), `iq3s-mtp-base` (pre-tuning A/B baseline), plus
+`inkling2-mini` (MoE, 128K, CPU experts — primary) and `inkling2-mini-noop`.
 
 Start it (stop the compose stack first — both use port 8089):
 
@@ -283,6 +284,12 @@ copy/edit prompts, 2026-11-25):
 | `iq3s-mtp` (tuned) | 282.6 / 308.5 | 1155/1158, 1165/1206 |
 | `iq3s-mtp-base` (MTP only, A/B baseline) | 63.3 / 63.1 | 798/801, 797/803 |
 
+Inkling-2-Mini (`inkling2-mini`, q4_0 KV, 8 GiB expert cache, batch 32):
+gen **15,7 tok/s** (short) / **17,4 tok/s** (repeat workload), prefill ~15 tok/s,
+VRAM **11726 MiB**, RAM free 14/30 GB. `inkling2-mini-noop` (op-offload off,
+batch 256) gives 9,7 tok/s and 13300 MiB — kept as fallback only. A full 128K
+prompt is allocated but would take hours to prefill at ~15 tok/s.
+
 A 39K-token chat followed by a foreign request returned with 39065 cached
 tokens in ~2 s on **both** cache settings; the 8192/8 benefit is expected on
 65K+ chats (as measured in the field guide linked in `AGENTS.md`).
@@ -303,7 +310,9 @@ the GPU. On Docker 26.x use the compose `deploy.resources.reservations.devices`
 block; `--gpus all` can degrade to CPU-serialized CUDA JIT.
 
 **OOM at model load** — check the profile's estimated VRAM, lower `CTX`, switch
-KV to `q4_0`, or disable MTP. `--fit off` is intentional: it must fail loudly
+KV to `q4_0`, or disable MTP. For Inkling: keep `BATCH/UBATCH <= 32` (256 needs
+a ~13 GiB compute buffer) and download `Mainline_Support/*.gguf_file` renamed
+to `.gguf` — the root GGUF is rejected by mainline llama.cpp. `--fit off` is intentional: it must fail loudly
 instead of silently shrinking the context.
 
 **`common_download_get_hf_plan: no GGUF files found`** — you used `-hf`. The MTP

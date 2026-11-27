@@ -120,18 +120,49 @@ Single-model compose profiles (fallback path):
 
 | Profile | Quant | MTP | CTX | KV | Measured VRAM |
 |---|---|---|---|---|---|
+| `inkling-2-mini.env` | Inkling UD-Q4_K_M (MoE) | off | 128K | q4_0 | 11726 MiB |
 | `qwen3.8-27b-iq3s-mtp.env` | UD-IQ3_S | `n_max=2` | 48K | q8_0 | 14424 MiB |
 | `qwen3.8-27b-q3kxl.env` | UD-Q3_K_XL | off | 32K | q8_0 | ~13340 MiB |
 | `qwen3.8-27b-iq3s-longctx.env` | UD-IQ3_S | off | 128K | q4_0 | 13992 MiB |
 
 **Default deployment = router mode** with the same three configurations as
-presets in `configs/router.ini`: `iq3s-mtp` (default), `q3kxl`, `longctx`.
+presets in `configs/router.ini`: `iq3s-mtp` (default), `q3kxl`, `longctx`, plus `inkling2-mini` /
+`inkling2-mini-noop` for the second model.
 Select with the `model` field of `/v1/chat/completions`; only one preset is
 resident at a time. See README → "Router mode (experimental)" for the exact
 `docker run` command and the switch-back procedure.
 
 OOM fallbacks: 48K → 40K, q3kxl 32K → 24K. Never "fix" OOM by offloading
 experts — there are none.
+
+### Inkling-2-Mini (second model, added 2026-11-27)
+
+Source `unsloth/Inkling-2-Mini-GGUF` @ `8078d149286eec7193795413b9e0643da6d11fa1`.
+`UD-Q4_K_M` = 16 610 544 608 B (15,47 GiB), arch `inkling2_loop`, **MoE**
+(26,2B / ~5,4B effective active, 8-of-128 experts, layers 6–17 looped ×3),
+native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
+
+- **Use `Mainline_Support/Inkling-2-Mini-UD-Q4_K_M.gguf_file` renamed to `.gguf`.**
+  The root GGUF uses Unsloth's own layout and mainline b12716 rejects it.
+  `deploy/download-model.sh --model inkling2` handles repo/pin/rename.
+- Build requirement: ≥ b12611 (PR #32704 per-expert NVFP4 scales) and #32807
+  (host-expert copy corruption). b12716 includes both.
+- Profile `configs/inkling-2-mini.env`; router presets `inkling2-mini` (primary)
+  and `inkling2-mini-noop` (fallback). `CTX=131072`, `q4_0` KV,
+  `BATCH/UBATCH=32`, `-cmoe`, 8 GiB `--moe-cache-mib`, CPU share 0.0,
+  sampling temp 1.0 / top-p 1.0 / top-k 0 / min-p 0.
+- Keep host-tensor op offload **on** but batch small: with `BATCH=256` the
+  compute buffer alone wants ~13 GiB and OOMs. `--no-op-offload` works too
+  (13,3 GiB VRAM, gen 9,7 tok/s) but is slower than the small-batch variant.
+- No DSpark on b12716 (PR #32218 not merged), no MTP head → `spec-type none`.
+- Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
+  or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
+  for real answers; 32–64 produces empty `content`.
+- Measured on RTX 5060 Ti: VRAM **11726 MiB**, RAM free 14/30 GB, gen
+  **15,7 tok/s** (short) / **17,4 tok/s** (repeat workload), prefill ~15 tok/s.
+  Repro #32807 (repeat sentence ×20) produced no gibberish.
+  **Caveat:** at ~15 tok/s prefill, a full 128K prompt would take hours; the
+  context is allocated and valid, but practical prompts are much shorter.
 
 ## Repository layout (target)
 
@@ -223,8 +254,10 @@ or `--runtime=nvidia` + `NVIDIA_VISIBLE_DEVICES=all` in `llama.sh`.
 
 ### No MoE offload flags
 
-The model is dense. `-ot exps=CPU` / `--n-cpu-moe` / `CPUMOE` do not apply and
-silently produce nonsense. If VRAM is short: lower `CTX`, switch KV to `q4_0`,
+For the **dense Qwen profiles** the model has no experts:
+`-ot exps=CPU` / `--n-cpu-moe` / `CPUMOE` do not apply and silently produce
+nonsense. The Inkling-2-Mini profile below is the exception — it is MoE and
+needs those flags. If VRAM is short: lower `CTX`, switch KV to `q4_0`,
 or drop MTP. Do not partially offload layers unless a profile explicitly does it
 with measured numbers.
 
@@ -440,8 +473,8 @@ Default profile (IQ3_S + MTP n_max=2, q8_0 KV) — see `benchmark/vram-20261125-
 - [ ] Sweep `BATCH`/`UBATCH` (512/256 … 2048/512) for prefill
       (`benchmark/bench-batch.sh`). Field data: `ubatch 2048` is 23–28 % slower
       than 1024, so keep <= 1024.
-- [ ] Measure return-to-chat / compaction at 65K–128K with the new cache size;
-      39K already works on both old and new settings.
+- [ ] Measure prefill/return-to-chat at 65K–128K with Inkling (only ~4K tokens
+      measured so far — prefill is ~15 tok/s on this 4-vCPU box).
 - [ ] Verify `--cache-reuse` behaviour in logs on `qwen35`.
 - [ ] Vision profile (mmproj) — deferred to v2, needs #31302 resolved.
 - [x] Make `deploy/install-llama.sh`, `deploy/start-router.sh`,

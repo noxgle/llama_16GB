@@ -127,6 +127,7 @@ services:
       - "${REPEAT_PENALTY:-1.0}"
       # MoE-only options (Inkling). Empty values are filtered by the entrypoint.
       - "${CPU_MOE_FLAG:-}"
+      - "${OP_OFFLOAD_FLAG:-}"
       - "${MOE_CACHE_FLAG:-}"
       - "${MOE_CACHE_MIB:-}"
       - "${MOE_SHARE_FLAG:-}"
