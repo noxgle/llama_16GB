@@ -296,6 +296,10 @@ repeated-text gen 40,8 tok/s (accept 206/276) vs 35,8 without, but no gain on
 short prompts and VRAM 15764 vs 14602 MiB — kept optional. No regression on
 Qwen (60,1 tok/s). `n_max=2` was slower than 3.
 
+Prefill on b12811 (`stable-b12811-v1`, unique prompts): Inkling 69–80 tok/s
+(219–1682 tokens), DSpark essentially identical (66–69 tok/s), Qwen 898,8 tok/s
+at 20K tokens — no regression vs 907 tok/s on b12716.
+
 UBatch 128 OOMs at load (3,4 GiB compute buffer); ubatch 64 loads at 15841 MiB
 but crashes on a ~1,7K prompt. The primary `UBATCH=32` was re-verified with an
 8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen, 14895 MiB VRAM. Batch 1024 is

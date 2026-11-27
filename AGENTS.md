@@ -191,6 +191,17 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
   | 128 | 4096 | OOM (9,9 GiB compute buffer) | — | — |
   | 1024 | 4096 (op-offload off) | OOM (25,7 GiB compute buffer) | — | — |
 
+- Prefill measured on b12811 (unique prompts, no prefix-cache reuse):
+
+  | preset | prompt tokens | prefill tok/s | gen tok/s | VRAM |
+  |---|---|---|---|---|
+  | `inkling2-mini` | 219 / 857 / 1682 | 80,4 / 69,1 / 69,5 | 36,5 / 34,6 / 33,3 | ~14620 MiB |
+  | `inkling2-mini-dspark` | 231 / 857 / 1682 | 66,4 / 68,5 / 68,9 | 34,3 / 33,7 / 34,8 | ~15780 MiB |
+  | `iq3s-mtp` (Qwen) | 20127 | **898,8** | 53,2 | 14420 MiB |
+
+  DSpark does not slow prefill; it only adds VRAM. b12716 Qwen at ~15K tokens
+  was 907 tok/s — no regression from the pin bump.
+
   Presets `inkling2-mini-b64` / `inkling2-mini-b128` are the older `-cmoe`
   variants; for the primary selective recipe `UBATCH=32` is the only stable
   value (verified again with an 8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen,
