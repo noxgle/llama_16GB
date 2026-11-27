@@ -290,6 +290,12 @@ experts, 1,5 GiB cache, batch 1024/ubatch 32): gen **30,4–32,8 tok/s**,
 prefill **68,9 tok/s** (8K prompt), VRAM **14872 MiB**, RAM free 23/30 GB.
 The all-CPU-expert variant (`inkling2-mini-cmoe`, 8 GiB cache) gives 15–17 tok/s
 and 12800 MiB — kept as fallback.
+DSpark on b12811 is available as optional preset `inkling2-mini-dspark`
+(drafter: `Mainline_Support/dspark-Inkling-2-Mini-Q8_0.gguf_file` -> `.gguf`):
+repeated-text gen 40,8 tok/s (accept 206/276) vs 35,8 without, but no gain on
+short prompts and VRAM 15764 vs 14602 MiB — kept optional. No regression on
+Qwen (60,1 tok/s). `n_max=2` was slower than 3.
+
 UBatch 128 OOMs at load (3,4 GiB compute buffer); ubatch 64 loads at 15841 MiB
 but crashes on a ~1,7K prompt. The primary `UBATCH=32` was re-verified with an
 8K prompt: 68,3 tok/s prefill, 30,1 tok/s gen, 14895 MiB VRAM. Batch 1024 is

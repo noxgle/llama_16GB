@@ -158,12 +158,15 @@ native 1M context, optional `mmproj-F16.gguf` (v1 stays text-only).
 - Keep host-tensor op offload **on** but `UBATCH<=32`: at 256 the compute
   buffer alone wants ~13 GiB (6,5 GiB even with selective `-ot`) and OOMs at
   128K. `--no-op-offload` works too but is much slower.
-- DSpark: our b12716 predated PR #32218 (merged 24 Nov 20:11) — it had the
-  generic `draft-dspark` flag but not the Inkling draft-state width fix, so all
-  published drafters failed with `joint_proj expected 2816x768, got 5120x768`.
-  Pin bumped to b12811 (27 Nov), which contains #32218 plus the width/reseeding
-  fix; DSpark re-test with the new image is pending. Unsloth claims ~1,11–1,24x
-  decode speedup. No MTP head, so `spec-type none` until the test succeeds.
+- DSpark: works on the b12811 pin (PR #32218 + Inkling draft-state width fix);
+  the old b12716 failed every published drafter with
+  `joint_proj expected 2816x768, got 5120x768`. Drafter:
+  `Mainline_Support/dspark-Inkling-2-Mini-Q8_0.gguf_file` -> `.gguf` (481 MB).
+  Optional preset `inkling2-mini-dspark`, `n_max=3`, `gpu-layers-draft=99`.
+  Measured: repeated-text gen **40,8 tok/s** (accept 206/276) vs **35,8** without;
+  short prompt 33,6 vs 34,0 (no gain); VRAM 15764 vs 14602 MiB. `n_max=2` was
+  worse (35,0 on both workloads). No gibberish. Kept optional, not default,
+  because of the small short-prompt gain and only ~0,5 GiB VRAM headroom.
 - Chat template `reasoning_effort` accepts `none|minimal|low|medium|high|xhigh|max`
   or 0–0.99 (default 0.9). Reasoning has a floor, so keep `max_tokens >= 2048`
   for real answers; 32–64 produces empty `content`.
